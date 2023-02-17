@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61.0", "numpy>=1.19"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "frtrg"
+version = "0.14.16"
+authors = [
+  { name="Valentin Bruch", email="valentin.bruch@rwth-aachen.de" },
+]
+description = "Floquet real-time renormalization group analysis of the Kondo model"
+readme = "README.md"
+requires-python = ">=3.7"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Development Status :: 4 - Beta",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Physics",
+  "Natural Language :: English",
+]
+dependencies = [
+  "numpy",
+  "pandas",
+  "sqlalchemy",
+  "tables",
+  "scipy",
+]
+
+[project.optional-dependencies]
+logging = ["colorlog"]
+
+[project.urls]
+"Homepage" = "https://github.com/stiglers-eponym/frtrg"
+"Bug Tracker" = "https://github.com/stiglers-eponym/frtrg/issues"
