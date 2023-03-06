@@ -1463,7 +1463,7 @@ class Kondo:
 
             #   γ
             # dI     γ        ⎛ γ⊤     ⊤⎞⊤   1  γ  ⎛                 ⎞
-            # ——— = I  Π G² + ⎜I   Π G² ⎟  + — I   ⎜ Π G² Z + Z G² Π ⎟ G³
+            # ——— = I  Π G² + ⎜I   Π G² ⎟  + — I   ⎜ Π G² Z + Z G² Π ⎟ G²
             # dE              ⎝         ⎠    2  34 ⎝                 ⎠  43
             self.currentE = il @ pi @ g2 + ((il @ pi) % g2) + .5 * einsum_34_x_43(il, bracket, g2)
 
@@ -1475,7 +1475,7 @@ class Kondo:
                 # dE               ⎝         ⎠              ⎝         ⎠
                 self.g2E += g2 @ pi @ ga + ga @ pi @ g2 - ((g2 @ pi) % ga) - ((ga @ pi) % g2)
 
-                # dG²              ⎛  ⊤     ⊤⎞⊤
+                # dG³              ⎛  ⊤     ⊤⎞⊤
                 # ——— += Ga Π G³ - ⎜Ga  Π G³ ⎟
                 # dE               ⎝         ⎠
                 self.g3E += ga @ pi @ g3 - ((ga @ pi) % g3)
@@ -1536,12 +1536,6 @@ class Kondo:
                 # ———— -= — tr ⎜I ⎜ Π δΓ Z + Z δΓ Π ⎟ G³⎟
                 #  dE     4    ⎝  ⎝                 ⎠   ⎠
                 self.deltaGammaLE += (-0.75) * (il @ (pi_reduced @ deltaGamma @ z_reduced + z_reduced @ deltaGamma @ pi_reduced) @ g3).tr()
-        elif self.truncation_order == 2:
-            #    γ
-            # dδΓ    3   ⎛           ⎞  γ
-            # ———— = — i ⎜ δ  - δ    ⎟ I   Π G³
-            #  dE    2   ⎝  1L    2L ⎠  12    21
-            self.deltaGammaLE = 1.5j * (il[0,1] @ pi @ g3[1,0] - il[1,0] @ pi @ g3[0,1])
 
         #   γ
         # dΓ     γ
