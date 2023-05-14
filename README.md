@@ -24,6 +24,7 @@ The FRTRG module provides the following submodules:
 * `data_management`: save and load Kondo RG flow results in a database and in HDF5 files. Use `DataManager.list()` to obtain main results (such as the conductance) in a pandas table.
 * `gen_data`: interface for generating data for AC driving from the command line and for saving the results.
 * `gen_pulse_data`: interface for generating data for pulsed driving from the command line and for saving the results.
+* `visualize`: basic 3d visualization command line interface using PyQtGraph
 * `rtrg`: helper module for Floquet matrix RG objects
 * `compact_rtrg`: variant of `rtrg` that uses (and requires) a symmetry in the bias voltage of the form V(-t)=-V(t).
 * `reservoirmatrix`: helper module for matrices in reservoir space, which are also Floquet matrices and RG objects
@@ -48,6 +49,12 @@ OMP_NUM_THREADS=1 python -m frtrg.gen_data \
 ```
 In this example, the results will be saved in a file `data.h5`. Metadata and main results (DC and AC current, conductance) are also saved in `database.sqlite`.
 It is possible to create arrays data points with a single command line. See `python -m frtrg.gen_data --help` for more information.
+
+### Visualization
+A basic visualization using PyQtGraph is available in the `visualize` submodule (requires matplotlib and PyQtGraph):
+```sh
+python -m frtrg.visualize --omega=3.4425
+```
 
 ### Exporting data
 To select, export or visualize data, you can access a pandas table. Example:

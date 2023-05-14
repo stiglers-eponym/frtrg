@@ -30,6 +30,7 @@ dependencies = [
 
 [project.optional-dependencies]
 logging = ["colorlog"]
+visualization = ["pyqtgraph","matplotlib"]
 
 [project.urls]
 "Homepage" = "https://github.com/stiglers-eponym/frtrg"
