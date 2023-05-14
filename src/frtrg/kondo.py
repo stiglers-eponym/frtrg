@@ -8,7 +8,8 @@ Floquet real-time renormalization group implementation for the
 spin 1/2 isotropic Kondo model.
 
 Example usage:
->>> from frtrg.kondo import Kondo, np
+>>> import numpy as np
+>>> from frtrg.kondo import Kondo
 >>> nmax = 10
 >>> vb = 3
 >>> # Compute the RG flow in 2 different ways
@@ -209,11 +210,12 @@ def solveTV0_scalar(
         dj = dtheta*(1 + j/(1 + theta))/2
         return np.array([dgamma, dtheta, dj])
 
+    t_eval = solveopts.pop("t_eval", None) if full_output else (d,)
     result = solve_ivp(
             ode_function_imaxis,
             (0, d),
             np.array([gamma0, theta0, j0]),
-            t_eval = None if full_output else (d,),
+            t_eval = t_eval,
             rtol = rtol,
             atol = atol,
             **solveopts)

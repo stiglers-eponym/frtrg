@@ -73,9 +73,9 @@ def main():
     method_group.add_argument("--improved_initial_conditions", metavar="bool",
             type=int, default=1,
             help = "Set initial condition for dgammaL/dE to linear response estimate")
-    method_group.add_argument("--include_Ga", metavar="bool", type=bool, default=False,
+    method_group.add_argument("--include_Ga", metavar="bool", type=int, default=0,
             help = "include vertex parameter Ga in RG equations")
-    method_group.add_argument("--solve_integral_exactly", metavar="bool", type=bool, default=False,
+    method_group.add_argument("--solve_integral_exactly", metavar="bool", type=int, default=0,
             help = "Solve integral in RG equations exactly by diagonalizing Floquet matrices. Requires --integral_method")
     method_group.add_argument("--integral_method", metavar="int", type=int, default=-15,
             help = "Select solution/approximation of frequency integral")
@@ -100,20 +100,20 @@ def main():
     numerics_group.add_argument("--lazy_inverse_factor", metavar='float', type=float,
             default = settings.LAZY_INVERSE_FACTOR,
             help = "Factor between 0 and 1 for truncation of extended matrix before inversion.\n0 gives most precise results, 1 means discarding padding completely in inversion.\nOverwrites value set by environment variable LAZY_INVERSE_FACTOR.")
-    numerics_group.add_argument("--extrapolate_voltage", metavar='bool', type=bool,
+    numerics_group.add_argument("--extrapolate_voltage", metavar='bool', type=int,
             default = settings.EXTRAPOLATE_VOLTAGE,
             help = "Extrapolate along voltage branches (quadratic extrapolation).\nOverwrites value set by environment variable EXTRAPOLATE_VOLTAGE.")
-    numerics_group.add_argument("--check_symmetries", metavar='bool', type=bool,
+    numerics_group.add_argument("--check_symmetries", metavar='bool', type=int,
             default = settings.CHECK_SYMMETRIES,
             help = "Check symmetries during RG flow.\nOverwrites value set by environment variable CHECK_SYMMETRIES.")
     symmetry_group = numerics_group.add_mutually_exclusive_group()
-    symmetry_group.add_argument("--ignore_symmetries", metavar='bool', type=bool,
+    symmetry_group.add_argument("--ignore_symmetries", metavar='bool', type=int,
             default = settings.IGNORE_SYMMETRIES,
             help = "Do not use any symmetries.\nOverwrites value set by environment variable IGNORE_SYMMETRIES.")
-    symmetry_group.add_argument("--enforce_symmetric", metavar='bool', type=bool,
-            default = settings.IGNORE_SYMMETRIES,
+    symmetry_group.add_argument("--enforce_symmetric", metavar='bool', type=int,
+            default = settings.ENFORCE_SYMMETRIC,
             help = "Enforce using symmetries, throw errors if no symmetries can be used.\nOverwrites value set by environment variable ENFORCE_SYMMETRIC.")
-    numerics_group.add_argument("--use_reference_implementation", metavar='bool', type=bool,
+    numerics_group.add_argument("--use_reference_implementation", metavar='bool', type=int,
             default = settings.USE_REFERENCE_IMPLEMENTATION,
             help = "Use slower reference implementation of RG equations instead of optimized implementation.\nOverwrites value set by environment variable USE_REFERENCE_IMPLEMENTATION.")
 
