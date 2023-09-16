@@ -1,0 +1,78 @@
+name: build, package, documentation
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: build, package, document
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Install Dependencies
+      run: >
+        sudo apt-get update -y;
+        sudo apt-get install -y --no-install-recommends
+        gcc
+        liblapack-dev
+        libopenblas-dev
+        pipenv
+        python3-pip
+        python3-build
+        python3-setuptools
+        python3-numpy
+        python3-pandas
+        python3-sqlalchemy
+        python3-tables
+        python3-scipy
+        python3-sphinx
+        python3-sphinx-autoapi
+
+    - name: Build
+      run: python3 -m build
+
+    - name: Archive package
+      uses: actions/upload-artifact@v3
+      with:
+        name: frtrg.whl
+        path: dist/frtrg-*.whl
+
+    - name: Install
+      run: pip3 install --user dist/frtrg-*.whl
+
+    - name: Sphinx
+      run: |
+        mkdir -p public_html
+        sphinx-build -b html doc _site
+        chmod -R a+rX _site/
+
+    - name: Upload Pages artifact
+      uses: actions/upload-pages-artifact@v2
+
+  # Deploy job
+  deploy:
+    # Add a dependency to the build job
+    needs: build
+
+    # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
+    permissions:
+      pages: write      # to deploy to Pages
+      id-token: write   # to verify the deployment originates from an appropriate source
+
+    # Deploy to the github-pages environment
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    # Specify runner + deployment step
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v2 # or the latest "vX.X.X" version tag for this action
