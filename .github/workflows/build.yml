@@ -33,6 +33,7 @@ jobs:
         python3-scipy
         python3-sphinx
         python3-sphinx-autoapi
+        texlive-base
 
     - name: Build
       run: python3 -m build

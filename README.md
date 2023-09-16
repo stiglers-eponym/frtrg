@@ -1,12 +1,21 @@
 # FRTRG
 Floquet real-time renormalization group (RTRG) for the isotropic single-channel Kondo model.
 The method implemented here can be used to describe strongly correlated open quantum systems at zero temperature with time-dependent driving.
-See [Phys. Rev. B **106**, 115440](https://doi.org/10.1103/PhysRevB.106.115440) ([arXiv:2206.06263](https://arxiv.org/abs/2206.06263)) or my [thesis](https://doi.org/10.18154/RWTH-2023-05062) for an explanation of the method and some results.
+
+Publications:
+* [my thesis](https://doi.org/10.18154/RWTH-2023-05062)
+  contains the latest and most complete documentation of the method implemented here
+* [Phys. Rev. B **106**, 115440](https://doi.org/10.1103/PhysRevB.106.115440)
+  ([arXiv:2206.06263](https://arxiv.org/abs/2206.06263))
+  contains a more compact explanation of the method based on an earlier version of the code.
+  Also have a look at the [interactive plots](https://vbruch.eu/frtrg.html).
+
+The modules in this package are mainly intended as a reference for these publications,
+and as a possible source of inspiration for other applications of Floquet or RTRG methods.
 
 
 ## Building and installing
-The scripts in this repository are mainly intended as a reference for publications using this code, and as a possible source of inspiration for other applications of Floquet or RTRG methods.
-To install the full package run (the file name in the last line may vary):
+To install the full package, run (the file name in the last line may vary):
 ```sh
 git clone https://github.com/stiglers-eponym/frtrg
 cd frtrg
@@ -14,9 +23,17 @@ python -m build
 pip install --user dist/frtrg-0.14.16-cp311-cp311-linux_x86_64.whl
 ```
 
+## Documentation
+An automatically generated documentation of the python package can be found here:
+<https://stiglers-eponym.github.io/frtrg/>.
+**If you wish to use this module, do not hesitate to ask for better documentation!**
+The python modules contain docstrings of varying quality. Only the
+documentation of the kondo module is formatted according to some standards.
+
+
 ## Usage
 This code can be used as a python library, or to generate and save data.
-The individual modules should contain a brief documentation.
+The individual modules contain a brief documentation in the beginning.
 
 ### Library
 The FRTRG module provides the following submodules:
