@@ -1,7 +1,7 @@
 # FRTRG
 Floquet real-time renormalization group (RTRG) for the isotropic single-channel Kondo model.
 The method implemented here can be used to describe strongly correlated open quantum systems at zero temperature with time-dependent driving.
-See [Phys. Rev. B **106**, 115440](https://doi.org/10.1103/PhysRevB.106.115440) ([arXiv:2206.06263](https://arxiv.org/abs/2206.06263)) or my [thesis](https://vbruch.eu/data/thesis.pdf) for an explanation of the method and some results.
+See [Phys. Rev. B **106**, 115440](https://doi.org/10.1103/PhysRevB.106.115440) ([arXiv:2206.06263](https://arxiv.org/abs/2206.06263)) or my [thesis](https://doi.org/10.18154/RWTH-2023-05062) for an explanation of the method and some results.
 
 
 ## Building and installing

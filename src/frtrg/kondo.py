@@ -2,12 +2,18 @@
 # License: MIT
 # type: ignore
 """
-Kondo FRTRG, main module for RG calculations
+frtrg.kondo - Solving the Kondo model
+=====================================
 
-Floquet real-time renormalization group implementation for the
-spin 1/2 isotropic Kondo model.
+Main module of the Floquet real-time renormalization group calculation
+for the isotropic spin 1/2 Kondo model.
 
-Example usage:
+The :class:`Kondo` class implements the initial conditions and RG
+equations for the Kondo model. Links to the scientific documentation
+can be found below.
+
+Example
+-------
 >>> import numpy as np
 >>> from frtrg.kondo import Kondo
 >>> nmax = 10
@@ -41,8 +47,12 @@ Example usage:
 >>> np.abs(kondo1.z[vb,:,nmax] - kondo2.z[vb,:,nmax]).max()
 1.421144031910071e-05
 
-Further information:
-https://arxiv.org/abs/2206.06263 and https://vbruch.eu/frtrg.html
+Further reading
+---------------
+- paper: https://doi.org/10.1103/PhysRevB.106.115440
+  or preprint: https://arxiv.org/abs/2206.06263
+- PhD thesis: http://doi.org/10.18154/RWTH-2023-05062
+- some interactive plots: https://vbruch.eu/frtrg.html
 """
 
 import hashlib
@@ -68,12 +78,26 @@ LAST_LOG_TIME = REF_TIME
 
 def driving_voltage(tau, *fourier_coef):
     """
-    Generate function of time given Fourier coefficients.
+    Generate function of time given Fourier coefficients
 
-    tau = t/T so that 0 <= tau <= 1.
-    fourier_coef[n] = V_{n+1}/Ω
+    Parameters
+    ----------
+    tau : float or array-like
+        time relative to time period, :math:`\\tau = \\frac{t}{T}`
+        where :math:`T=2\\pi/\\Omega` and :math:`0 \\leq \\tau \\leq 1`
+    fourier_coef : tuple of complex numbers
+        coefficients of Fourier series expansion in units of :math:`\\Omega`,
+        :math:`\\text{fourier\\_coef}[n] = \\frac{V_{n+1}}{\\Omega}`
 
-    The result is given in the same units as fourier_coef.
+    Returns
+    -------
+    np.ndarray
+        voltage in same units as `fourier_coef`,
+        :math:`\\sum_n V_n \\exp(2\\pi n \\tau i) + H.c.`
+
+    See Also
+    --------
+    :meth:`driving_voltage_integral`
     """
     res = np.zeros_like(tau)
     for n, c in enumerate(fourier_coef, 1):
@@ -83,17 +107,26 @@ def driving_voltage(tau, *fourier_coef):
 
 def driving_voltage_integral(tau, *fourier_coef):
     """
-    Compute time-integral given Fourier coefficients.
+    Compute time-integral given Fourier coefficients
 
-    tau = t/T so that 0 <= tau <= 1.
-    fourier_coef[n] = V_{n+1}/Ω
+    Parameters
+    ----------
+    tau : float or array-like
+        time relative to time period, :math:`\\tau = \\frac{t}{T}`
+        where :math:`T=2\\pi/\\Omega` and :math:`0 \\leq \\tau \\leq 1`
+    fourier_coef : tuple of complex numbers
+        coefficients of Fourier series expansion in units of :math:`\\Omega`,
+        :math:`\\text{fourier\\_coef}[n] = \\frac{V_{n+1}}{\\Omega}`
 
-              t
-    return  Ω ∫dt' V(t') ,  t = tau*T
-              0
+    Returns
+    -------
+    np.ndarray
+        time integral over voltage in units of :math:`\\hbar/e`,
+        :math:`\\Omega \\int_0^{\\tau T} dt'\\, V(t')` where :math:`T=2\\pi/\\Omega`
 
-    fourier_coef should be in units of Ω, then the result has
-    unit hbar/e = 1
+    See Also
+    --------
+    :meth:`driving_voltage`
     """
     res = np.zeros_like(tau)
     for n, c in enumerate(fourier_coef, 1):
@@ -106,9 +139,28 @@ def gen_init_matrix(nmax, *fourier_coef, resonant_dc_shift=0, resolution=5000):
     Generate Floquet matrix of the bare coupling without scalar
     coupling prefactor.
 
-    fourier_coef must be in units of Ω:
-    fourier_coef[n] = V_{n+1}/Ω
-    TODO: signs have been chosen such that the result looks correct
+    Parameters
+    ----------
+    nmax : int
+        size of Floquet matrices is (2*nmax+1, 2*nmax+1)
+    fourier_coef : tuple of complex numbers
+        coefficients of Fourier series expansion in units of :math:`\\Omega`,
+        :math:`\\text{fourier\\_coef}[n] = \\frac{V_{n+1}}{\\Omega}`
+    resonant_dc_shift : int, default=0
+        include a constant bias voltage that is an integer multiple of
+        the driving frequency :math:`\\Omega` by shifting the Floquet
+        matrices
+    resolution : int, default=5000
+        Discretize time-integrated voltage V(t) in `resolution` points
+        in one time period. Fourier coefficients of
+        :math:`exp[-i\\int_0^t dt'\\,V(t')]` are then calculated using
+        FFT.
+
+    Returns
+    -------
+    np.ndarray
+        Floquet matrix encoding the voltage as required for the initial
+        conditions
     """
     if len(fourier_coef) == 1 or np.allclose(fourier_coef[1:], 0):
         # Simple driving, only one frequency:
@@ -139,19 +191,71 @@ def gen_init_matrix(nmax, *fourier_coef, resonant_dc_shift=0, resolution=5000):
 
 def solveTV0_scalar_order2(
         d,
-        tk = 1, # TODO: prior to version 14.15 this was 0.32633176486110027
+        tk = 1, # Caution: prior to version 14.15 this was 0.32633176486110027
         rtol = 1e-8,
         atol = 1e-10,
         full_output = False,
         **solveopts):
     """
-    Solve the ODE for second order truncated RG equations in
-    equilibrium at T=V=0 for scalars from 0 to d.
-    returns: (gamma, z, j, solver)
+    Solve 2nd order T=0 equilibrium RG equations from 0 to `d`
 
-    The default value of tk is adjusted to yield comparible results to
-    the case of 3rd order truncation for d=1e9, rtol=1e-8, atol=1e-10,
-    voltage_branches=4
+    Solve the ODE for leading order truncated RTRG equations in
+    equilibrium at :math:`T=V=0` for scalars (instead of Floquet
+    matrices) from 0 to d.
+
+    Notes
+    -----
+    These leading order RG equations include a vertex renormalization,
+    which can be seen as a second order term. We therefore also
+    call this 2nd order RG equations.
+
+    Parameters
+    ----------
+    d : float
+        high-energy scale :math:`\\Lambda_0` until which RG equations
+        are solved
+
+    tk : float, default=1
+        Kondo temperature :math:`T_K''` defined integration constant
+        of the RG equations, which is used as reference energy scale
+
+        The default value of tk is adjusted to yield comparible results
+        to the case of 3rd order truncation for d=1e9, rtol=1e-8,
+        atol=1e-10, voltage_branches=4
+
+        Note the difference to the integration constant :math:`T_K'`
+        in the next-to-leading order RG equations, which we also call
+        Kondo temperature.
+
+    rtol : float, default=1e-8
+        relative tolerance of ODE solver, passed to
+        :meth:`scipy.integrate.solve_ivp`
+
+    atol : float, default=1e-10
+        absolute tolerance of ODE solver, passed to
+        :meth:`scipy.integrate.solve_ivp`
+
+    full_output : bool, default=False
+        if True, include RG flow in results. Otherwise only include
+        result of the flow
+
+    **solveopts : dict
+        solver options, passed to :meth:`scipy.integrate.solve_ivp`
+
+    Returns
+    -------
+    gamma : float
+        :math:`\\Gamma(\\Lambda_0)`, spin relaxation rate
+    z : float
+        :math:`Z(\\Lambda_0)`, Z-function
+    j : float
+        :math:`J(\\Lambda_0)`, coupling parameter
+    solver : obj
+        result of :meth:`scipy.integrate.solve_ivp`
+
+    See Also
+    --------
+    :meth:`.solveTV0_scalar`
     """
     # Initial conditions
     j0 = 2/(np.pi*3**.5)
@@ -190,8 +294,61 @@ def solveTV0_scalar(
         full_output = False,
         **solveopts):
     """
-    Solve the ODE in equilibrium at T=V=0 for scalars from 0 to d.
-    returns: (gamma, z, j, solver)
+    Solve T=0 equilibrium RG equations from 0 to `d`
+
+    Solve the ODE for next-to-leading order truncated RTRG equations
+    in equilibrium at :math:`T=V=0` for scalars (instead of Floquet
+    matrices) from 0 to d.
+
+    Notes
+    -----
+    These next-to-leading order RG equations include next-to-leading
+    order corrections of the vertex renormalization, which can itself
+    be seen as a 2nd order term.
+
+    Parameters
+    ----------
+    d : float
+        high-energy scale :math:`\\Lambda_0` until which RG equations
+        are solved
+
+    tk : float, default=1
+        Kondo temperature :math:`T_K'` defined integration constant
+        of the RG equations, which is used as reference energy scale
+
+        The default value of tk is adjusted to yield comparible results
+        to the case of 3rd order truncation for d=1e9, rtol=1e-8,
+        atol=1e-10, voltage_branches=4
+
+    rtol : float, default=1e-8
+        relative tolerance of ODE solver, passed to
+        :meth:`scipy.integrate.solve_ivp`
+
+    atol : float, default=1e-10
+        absolute tolerance of ODE solver, passed to
+        :meth:`scipy.integrate.solve_ivp`
+
+    full_output : bool, default=False
+        if True, include RG flow in results. Otherwise only include
+        result of the flow
+
+    **solveopts : dict
+        solver options, passed to :meth:`scipy.integrate.solve_ivp`
+
+    Returns
+    -------
+    gamma : float
+        :math:`\\Gamma(\\Lambda_0)`, spin relaxation rate
+    z : float
+        :math:`Z(\\Lambda_0)`, Z-function
+    j : float
+        :math:`J(\\Lambda_0)`, coupling parameter
+    solver : obj
+        result of :meth:`scipy.integrate.solve_ivp`
+
+    See Also
+    --------
+    :meth:`~solveTV0_scalar_order2`
     """
     # Initial conditions
     jbar = 2/(np.pi*np.sqrt(3))
@@ -235,16 +392,65 @@ def solveTV0_Utransformed(
         atol = 1e-10,
         **solveopts):
     """
-    Solve the ODE in equilibrium at T=V=0 to obtain initial conditions for Γ, Z and J.
-    Here all time-dependence is assumed to be contained in J.
+    Calculate initial condition Floquet matrices for transformed Hamiltonian
 
-    returns: (gamma, z, j)
+    Solve the ODE in equilibrium at :math:`T=V=0` to obtain initial
+    conditions for Γ, Z and J. It is assumed that all time-dependence
+    is contained in J by a unitary transformation of the original
+    Hamiltonian.
 
-    Return values are arrays representing the quantities at energies shifted
-    by Ω and μ as required for the initial conditions.
-    If properties.resonant_dc_shift ≠ 0, then a larger array of energies
+    Parameters
+    ----------
+    d : float
+        high-energy scale :math:`\\Lambda_0` until which RG equations
+        are solved
+
+    properties : :class:`rtrg.GlobalRGproperties` object
+        global properties object containing information about
+        time-dependent voltage
+
+    tk : float, default=1
+        Kondo temperature :math:`T_K'` defined integration constant
+        of the RG equations, which is used as reference energy scale
+
+        The default value of tk is adjusted to yield comparible results
+        to the case of 3rd order truncation for d=1e9, rtol=1e-8,
+        atol=1e-10, voltage_branches=4
+
+    truncation_order : {3, 2}
+        truncation order of the RG equations. Note that 2 means leading
+        order RG equations including vertex renormalization, while 3
+        means next-to-leading order RG equations.
+
+    rtol : float, default=1e-8
+        relative tolerance of ODE solver, passed to
+        :meth:`scipy.integrate.solve_ivp`
+
+    atol : float, default=1e-10
+        absolute tolerance of ODE solver, passed to
+        :meth:`scipy.integrate.solve_ivp`
+
+    **solveopts : dict
+        solver options, passed to :meth:`scipy.integrate.solve_ivp`
+
+    Returns
+    -------
+    gamma : array
+        :math:`\\Gamma(\\Lambda_0)`, spin relaxation rate
+    z : array
+        :math:`Z(\\Lambda_0)`, Z-function
+    j : array
+        :math:`J(\\Lambda_0)`, coupling parameter
+
+    All returned values are arrays representing the quantities at
+    energies shifted by Ω and μ as required for the initial conditions.
+    If `properties.resonant_dc_shift` ≠ 0, then a larger array of energies
     is considered, equivalent to mapping nmax → nmax+resonant_dc_shift in
-    the shape of properties.energies.
+    the shape of `properties.energies`.
+
+    See Also
+    --------
+    :meth:`~solveTV0_untransformed`, :class:`rtrg.GlobalRGproperties`,
     """
     # Check input
     assert isinstance(properties, GlobalRGproperties)
@@ -326,14 +532,64 @@ def solveTV0_untransformed(
         atol = 1e-10,
         **solveopts):
     """
-    Solve the ODE in equilibrium at T=V=0 to obtain initial conditions for Γ, Z and J.
-    Here all time-dependence is assumed to be included in the Floquet
-    matrix μ used for the voltage shift.
+    Calculate initial condition Floquet matrices for untransformed Hamiltonian
 
-    returns: (gamma, z, j, zj_square)
+    Solve the ODE in equilibrium at :math:`T=V=0` to obtain initial
+    conditions for Γ, Z and J. It is assumed that all time-dependence
+    is contained in the Floquet matrix for the chemical potential μ.
 
-    Return values represent Floquet matrices of the quantities at energies
-    shifted by μ as required for the initial conditions.
+    Parameters
+    ----------
+    d : float
+        high-energy scale :math:`\\Lambda_0` until which RG equations
+        are solved
+
+    properties : :class:`rtrg.GlobalRGproperties` object
+        global properties object containing information about
+        time-dependent voltage
+
+    tk : float, default=1
+        Kondo temperature :math:`T_K'` defined integration constant
+        of the RG equations, which is used as reference energy scale
+
+        The default value of tk is adjusted to yield comparible results
+        to the case of 3rd order truncation for d=1e9, rtol=1e-8,
+        atol=1e-10, voltage_branches=4
+
+    truncation_order : {3, 2}
+        truncation order of the RG equations. Note that 2 means leading
+        order RG equations including vertex renormalization, while 3
+        means next-to-leading order RG equations.
+
+    rtol : float, default=1e-8
+        relative tolerance of ODE solver, passed to
+        :meth:`scipy.integrate.solve_ivp`
+
+    atol : float, default=1e-10
+        absolute tolerance of ODE solver, passed to
+        :meth:`scipy.integrate.solve_ivp`
+
+    **solveopts : dict
+        solver options, passed to :meth:`scipy.integrate.solve_ivp`
+
+    Returns
+    -------
+    gamma : array
+        :math:`\\Gamma(\\Lambda_0)`, spin relaxation rate
+    z : array
+        :math:`Z(\\Lambda_0)`, Z-function
+    j : array
+        :math:`J(\\Lambda_0)`, coupling parameter
+    zj_square : array
+        :math:`(ZJ)^2(\\Lambda_0)`, with energy shifts applied as
+        required for the initial conditions
+
+    All returned values are arrays representing the quantities at
+    energies shifted by μ as required for the initial conditions.
+
+    See Also
+    --------
+    :meth:`~solveTV0_Utransformed`, :class:`rtrg.GlobalRGproperties`
     """
     # Check input
     assert isinstance(properties, GlobalRGproperties)
@@ -351,7 +607,7 @@ def solveTV0_untransformed(
     vb = properties.voltage_branches
 
     def ode_function_imconst(rE, values):
-        'RG eq. for Kondo model for constant Im(E), ODE of functions of rE = Re(E)'
+        """RG eq. for Kondo model for constant Im(E), ODE of functions of rE = Re(E)"""
         gamma, theta, j = values
         dgamma = theta
         dtheta = -4*j**2/(d - 1j*rE + gamma)
@@ -412,13 +668,18 @@ def solveTV0_untransformed(
 
 class Kondo:
     """
-    Kondo model with RG flow equations and routines for initial conditions.
+    Main class for solving the periodically driven Kondo problem
 
-    Always accessible properties:
-        total_iterations: total number of calls to self.updateRGequations()
-        global_properties: Properties for the RG functions, energy, ...
-            Properties stored in global_properties can be accessed
-            directly from self, e.g. using self.omega or self.energy.
+    This class contains the RG flow equations and initial conditions.
+
+    Properties
+    ----------
+    total_iterations
+        total number of calls to :meth:`~updateRGequations`
+    global_properties
+        Properties for the RG functions, energy, ...
+        Properties stored in global_properties can be accessed
+        directly from self, e.g. using self.omega or self.energy.
 
     When setting initial values, the following properties are added:
         xL : asymmetry factor of the coupling, defaults to 0.5
@@ -460,62 +721,120 @@ class Kondo:
             include_Ga = False,
             solve_integral_exactly = False,
             integral_method = -15,
-            resonant_dc_shift : 'DC bias voltages, multiples of Ω, positive int' = 0,
-            xL : 'asymmetry factor' = 0.5,
+            resonant_dc_shift = 0,
+            xL = 0.5,
             compact = 0,
             simplified_initial_conditions = False,
             improved_initial_conditions = True,
             truncation_order = 3,
             **rg_properties):
         """
-        Create Kondo object, initialize global properties shared by all
-        Floquet matrices.
+        Main class for solving the periodically driven Kondo problem
 
-        Expected arguments:
+        Initialize global properties object sharedby all Floquet matrices.
+        Define the physical configuration of this Kondo instance.
 
-        omega : frequency Ω, in units of Tk
-        nmax : size of Floquet matrix = (2*nmax+1, 2*nmax+1)
-        padding : extrapolation to avoid Floquet matrix truncation
-                effects, valid values: 0 ≤ padding ≤ 2*nmax-2
-        vdc : DC voltage, in units of Tk, including voltage due to
-                resonant_dc_shift.
-        vac : AC voltage, in units of Tk
-        voltage_branches : keep copies of Floquet matrices with energies
-                shifted by n Vdc, n = ±1,...,±voltage_branches.
-                Must be 0 or >=2
-        resonant_dc_shift : Describe DC voltage vdc partially by shifts
-                in the Floquet in the initial conditions.
-                valid values: non-negative integers
-        d : UV cutoff (convergence parameter)
-        include_Ga : include vertex paramter Ga in RG equations
-        solve_integral_exactly : diagonalize χ to solve integral in
-                next-to-leading order terms exactly.
-        integral_method : only relevant with solve_integral_exactly.
-                positive integer: truncation order of Taylor series
-                    representing the integral solution.
-                -1: exact solution
-                -2: baseline, should yield same results as
-                    solve_integral_exactly == False
-                -15: indicates that solve_integral_exactly == False
-        xL = 1 - xR : asymmetry factor of coupling. Must fulfill 0 ≤ xL ≤ 1.
-        clear_corners : improve convergence for large Floquet matrices
-                by setting parts of the matrices to 0 after each
-                multiplication. Handle with care!
-                valid values: padding + clear_corners <= 2*nmax + 1
-        compact : Use extra symmetry to improve efficiency for large
-                matrices. compact != 0 requires unitary_transformation
-                and the symmetry V(t+(π/Ω)) = - V(t). Valid values are:
-                    0: don't use compact form.
-                    1: compact form that ignores matrix elements which
-                        are zero by symmetry
-                    2: compact form which additionally uses symmetry of
-                        the nonzero matrix elements. requires xL = 0.5.
-        simplified_initial_conditions : use simplified initial
-                conditions for the current kernel which lead to the same
-                result in the limit of large D.
-        improved_initial_conditions : use nonzero initial condition for
-                derivative of current kernel Γ^L
-        truncation_order : Truncation order of RG equations, must be 2 or 3.
+        Energy scales are by default given in units of :math:`T_K'` for
+        next-to-leading order RG equations or :math:`T_K''` for leading
+        order RG equations. For simplicity, we will just write
+        :math:`T_K' (T_K'')` for both cases in the following.
+
+        Parameters
+        ----------
+        omega : float
+            frequency Ω, in units of :math:`T_K' (T_K'')`, depending
+            on the expansion order of the RG equations)
+
+        nmax : int
+            size of Floquet matrix = (2*nmax+1, 2*nmax+1)
+
+        padding : int, default=0
+            extrapolation to avoid Floquet matrix truncation
+            effects, valid values are 0 ≤ padding ≤ 2*nmax-2
+
+        vdc : float, default=0
+            DC voltage :math:`V_{avg}`, in units of :math:`T_K' (T_K'')`,
+            including voltage due to `resonant_dc_shift`.
+
+        vac : float, default=0
+            AC voltage :math:`V_{osc}` (cosine wave of frequency `omega`),
+            in units of :math:`T_K' (T_K'')`
+
+        voltage_branches : int, default=0
+            keep copies of Floquet matrices with energies shifted by
+            :math:`n V_{avg},\\ n = \pm 1, \ldots, \pm \\text{voltage\\_branches}`.
+            Must be 0 or ≥2.
+
+        resonant_dc_shift : int
+            Describe DC voltage :math:`V_{avg}` partially by shifts
+            in the Floquet in the initial conditions. This is only
+            possible when using the unitarily transformed Hamiltonian.
+            valid values: 0 ≤ `resonant_dc_shift` < nmax
+
+        d : float
+            high-energy scale :math:`\\Lambda_0` serving as a
+            convergence parameter of the RG equations. The RG equations
+            contain terms that decay polynomially in
+            :math:`1/\\log(\\Lambda_0/T_K')`.
+
+        include_Ga : bool, default=False
+            include vertex paramter :math:`G^a` in the RG equations
+
+        solve_integral_exactly : bool, default=False
+            diagonalize Floquet matrix χ to solve a frequency integral
+            appearing in next-to-leading order terms exactly.
+
+        integral_method : int, default=-15
+            only relevant in the case `solve_integral_exactly==True`.
+            This indicates how the frequency integral is solved.
+
+            Possible values are:
+             - positive integer: truncation order of Taylor series
+               representing the integral solution.
+             - -1: exact solution
+             - -2: baseline, should yield same results as
+               solve_integral_exactly == False
+             - -15: indicates that solve_integral_exactly == False
+
+        xL : float
+            asymmetry factor of coupling to left lead.
+            Allowed range: 0 ≤ xL ≤ 1.
+            :math:`x_L=1-x_R` defines a relativ asymmetry in the
+            coupling rate: :math:`\\Gamma_\\alpha\\propto x_\\alpha`
+
+        clear_corners : int, default=0
+            improve convergence for large Floquet matrices
+            by setting parts of the matrices to 0 after each
+            multiplication. Experimental option, handle with care!
+            allowed range: padding + clear_corners ≤ 2*nmax + 1
+
+        compact : {0, 1, 2}
+            Use extra symmetries to improve efficiency for large
+            matrices. compact != 0 only works for the unitarily
+            transformed Hamiltonian and with the symmetry
+            :math: `V\\big( t + \\tfrac{\\pi}{\\Omega}\\big) = -V(t)`.
+
+            Valid values are:
+             - 0: do not use compact form.
+             - 1: compact form that ignores matrix elements which
+               are zero by symmetry (not recommended)
+             - 2: compact form which additionally uses symmetry of
+               the nonzero matrix elements. requires `xL` = 0.5.
+
+        simplified_initial_conditions : bool, default=False
+            Use simplified initial conditions for the current kernel,
+            which lead to worse convergence for the limit
+            :math:`\\Lambda_0\\to\\infty`.
+
+        improved_initial_conditions : bool, default=True
+            use nonzero initial condition for derivative of current
+            kernel :math:`\\Gamma^L`, leading to better convergence
+            for the limit :math:`\\Lambda_0\\to\\infty`.
+
+        truncation_order : {3, 2}
+            Truncation order of RG equations. 3 stands for
+            next-to-leading order truncation and 2 stands for leading
+            order truncation with vertex renormalization.
         """
         self.global_properties = GlobalRGproperties(
                 nmax = nmax,
@@ -609,13 +928,17 @@ class Kondo:
         self.total_iterations = 0
 
     def __getattr__(self, name):
-        """self.<name> is defined as shortcut for self.global_properties.<name>"""
+        """Access attributes of self.global_properties directly as attributes of self"""
         return getattr(self.global_properties, name)
 
     def getParameters(self):
         """
-        Get most relevant parameters.
-        The returned dict can be used to label this object.
+        Get most relevant parameters for diagnostics.
+
+        Returns
+        -------
+        dictionary containing physical properties and some numerical
+        parameters
         """
         return {
                 'method' : 'J' if self.unitary_transformation else 'mu',
@@ -632,16 +955,29 @@ class Kondo:
                 }
 
     def initialize_untransformed(self,
-            **solveopts : 'keyword arguments passed to solver',
+            **solveopts,
             ):
         """
-        Arguments:
-        **solveopts: keyword arguments passed to the solver. Most relevant
-                are rtol and atol.
+        Initialize objects appearing in the RG equations.
 
-        Get initial conditions for Γ, Z and G2 by numerically solving the
-        equilibrium RG equations from E=0 to E=iD and for all required Re(E).
-        Initialize G3, Iγ, δΓ, δΓγ.
+        This function creates initial conditions for the untransformed
+        Hamiltonian. The time dependence is contained in the Floquet
+        matrix of the chemical potential :math:`\\mu`.
+        The initialization is done for flow parameter
+        :math:`\\Lambda = \\Im(E) = \\Lambda_0`.
+
+
+        Parameters
+        ----------
+        **solveopts : dict
+            keyword arguments passed to the solver. Most relevant
+            are the numbers rtol and atol determining the precision
+            of the solver. (see :meth:`scipy.integrate.solve_ivp`)
+
+
+        See Also
+        --------
+        :meth:`~initialize`, :meth:`~initialize_Utransformed`
         """
         sqrtxx = np.sqrt(self.xL*(1-self.xL))
         symmetry = 0 if settings.IGNORE_SYMMETRIES else 1
@@ -761,19 +1097,31 @@ class Kondo:
 
         self.global_properties.energy = 1j*self.d
 
+
     def initialize_Utransformed(self,
-            **solveopts : 'keyword arguments passed to solver',
+            **solveopts,
             ):
         """
-        Initialize all RG objects with unitary transformation.
+        Initialize objects appearing in the RG equations.
 
-        Arguments:
-        **solveopts: keyword arguments passed to the solver. Most
-                relevant are rtol and atol.
+        This function creates initial conditions for the unitarily
+        transformed Hamiltonian. The time dependence is contained in
+        the Floquet matrix of the system-reservoir coupling.
+        The initialization is done for flow parameter
+        :math:`\\Lambda = \\Im(E) = \\Lambda_0`.
 
-        Get initial conditions for Γ, Z and G2 by numerically solving
-        the equilibrium RG equations from E=0 to E=iD and for all
-        required Re(E). Then initialize G3, Iγ, δΓ, δΓγ, Yγ.
+
+        Parameters
+        ----------
+        **solveopts : dict
+            keyword arguments passed to the solver. Most relevant
+            are the numbers rtol and atol determining the precision
+            of the solver. (see :meth:`scipy.integrate.solve_ivp`)
+
+
+        See Also
+        --------
+        :meth:`~initialize`, :meth:`~initialize_untransformed`
         """
 
         sqrtxx = np.sqrt(self.xL*(1-self.xL))
@@ -1064,15 +1412,86 @@ class Kondo:
 
         self.global_properties.energy = 1j*self.d
 
+
     def initialize(self, **solveopts):
+        """
+        Initialize objects appearing in the RG equations.
+
+        The initialization is done for flow parameter
+        :math:`\\Lambda = \\Im(E) = \\Lambda_0`.
+
+
+        Parameters
+        ----------
+        **solveopts : dict
+            keyword arguments passed to the solver. Most relevant
+            are the numbers rtol and atol determining the precision
+            of the solver. (see :meth:`scipy.integrate.solve_ivp`)
+
+
+        Initialized attributes
+        ----------------------
+        gamma : :math:`\\Gamma`, Floquet matrix
+            Spin relaxation rate
+
+        z : :math:`Z`, Floquet matrix
+            Z matrix
+
+        g2 : :math:`G^2`, reservoir matrix of Floquet matrices
+            Vertex parametrization, contributing to leading order of
+            the coupling vertex
+
+        g3 : :math:`G^3`, reservoir matrix of Floquet matrices
+            Vertex parametrization, contributing only to next-to-leading
+            order of the coupling vertex
+
+        ga_scalar : :math:`G^a_{LL}`, Floquet matrix
+            Component of the vertex parametrization, contributing only
+            to next-to-leading order of the coupling vertex. Only
+            initialized if self.include_Ga == True and symmetry permits
+            parametrizing :math:`G^a` by its component
+            :math:`G^a_{LL}`, i.e., if :math:`x_L=x_R` and using
+            symmetries is enabled.
+
+        ga : :math:`G^a`, reservoir matrix of Floquet matrices
+            Vertex parametrization, contributing only to next-to-leading
+            order of the coupling vertex. Only initialized if
+            self.include_Ga == True and symmetry does not permit
+            parametrizing :math:`G^a` by its component
+            :math:`G^a_{LL}`, i.e., if :math:`x_L\\neq x_R` or if using
+            symmetries is disabled.
+
+        current : :math:`I^L`, reservoir matrix of Floquet matrices
+            Current vertex
+
+        gammaL : :math:`\\Gamma^L`, Floquet matrix
+            Current kernel
+
+        deltaGamma : :math:`\\delta \\Gamma`, Floquet matrix
+            Variation of spin relaxation rate :math:`\\Gamma` when
+            varying :math:`V_{avg}`
+
+        deltaGammaL : :math:`\\delta \\Gamma^L`, Floquet matrix
+            Variation of current kernel :math:`\\Gamma^L` when varying
+            :math:`V_{avg}`
+
+        yL : :math:`Y^L = \\frac{\\partial \\Gamma^L}{\\partial E}`, Floquet matrix
+            first energy-derivative of the current kernel :math:`\\Gamma^L`
+
+
+        See Also
+        --------
+        :meth:`~initialize_untransformed`, :meth:`~initialize_Utransformed`
+        """
         if self.unitary_transformation:
             self.initialize_Utransformed(**solveopts)
         else:
             self.initialize_untransformed(**solveopts)
 
+
     def run(self,
-            ir_cutoff : 'IR cutoff of RG flow' = 0,
-            forget_flow : 'do not store RG flow' = True,
+            ir_cutoff = 0,
+            forget_flow  = True,
             save_filename : 'save intermediate results: string containing %d for number of iterations' = '',
             save_iterations : 'number of iterations after which intermediate result should be saved' = 0,
             **solveopts : 'keyword arguments passed to solver',
@@ -1080,20 +1499,42 @@ class Kondo:
         """
         Initialize and solve the RG equations.
 
-        Arguments:
-        ir_cutoff: Stop the RG flow at Λ = -iE = ir_cutoff (instead of
-                Λ=0). If the RG flow is interrupted earlier, ir_cutoff
-                will be adapted.
-        **solveopts: keyword arguments passed to the solver. Most
-                interesting are rtol and atol.
+        This function preforms the following steps:
 
-        1.  Get initial conditions for Γ, Z and G2 by numerically
-            solving the equilibrium RG equations from E=0 to E=iD and
-            for all required Re(E). Initialize G3, Iγ, δΓ, δΓγ, Yγ.
-        2.  Solve RG equations from E=iD to E=0
-            for Γ, Z, G2, G3, Iγ, δΓ, δΓγ, Yγ.
-            Write parameters and solution for E=0 to self.<variables>
-            Return the ODE solver.
+        1.  Get initial conditions, see :meth:`~initialize`.
+        2.  Solve RG equations from :math:`\\Lambda=\\Lambda_0` to
+            :math:`\\Lambda=0`, see :meth:`~updateRGequations`
+
+
+        Parameters
+        ----------
+        ir_cutoff : float, default=0
+            Stop the RG flow at flow parameter Λ = -iE = ir_cutoff
+            (instead of Λ=0). If the RG flow is interrupted earlier,
+            the attribute self.ir_cutoff will be adapted.
+
+        forget_flow : bool, default=True
+            Do not store RG flow. Disabling this leads to significantly
+            higher memory consumption.
+
+        save_filename : str, optional
+            experimental: save intermediate results to given file name.
+            This string should contain "%04d" (or similar) to insert
+            number of iterations
+
+        save_iterations : int, optional
+            experimental: number of iterations, after which the
+            intermediate flow state should be saved. Keep at 0 to
+            disable intermediate saving of intermediate flow states.
+
+        **solveopts : dict
+            keyword arguments passed to the solver. Most
+            interesting are rtol and atol.
+
+
+        Returns
+        -------
+        solver : output of :meth:`scipy.integrate.solve_ivp`
         """
         self.initialize(**solveopts)
 
@@ -1124,11 +1565,26 @@ class Kondo:
 
     def updateRGequations(self):
         """
-        Calculates the energy derivatives using the RG equations.
-        The derivative of self.<name> is written to self.<name>E.
+        Evaluate the RG equations
 
-        A human readable reference implementation for this function
-        is provided in updateRGequations_reference.
+        Calculate the energy derivatives of the Floquet matrices
+        initialized in :meth:`~initialize`. For each such Floquet matrix
+        saved as attribute with name `name`, this method updates the
+        attribute `nameE` containing its energy derivative.
+
+        This method is typically called from within an ODE solver to
+        update the energy derivatives based on updated values of the
+        flow parameter (energy) and the Floquet matrices appearing in
+        the RG equation.
+
+        This function is the bottleneck of the numerical solution and
+        this implementation is therefore optimized for performance at
+        the cost of readability. See :meth:`~updateRGequations_reference`
+        for a more readable reference implementation.
+
+        See Also
+        --------
+        :meth:`~updateRGequations_reference`
         """
         if settings.ENFORCE_SYMMETRIC:
             if hasattr(self, 'pi'):
@@ -1382,11 +1838,26 @@ class Kondo:
 
     def updateRGequations_reference(self):
         """
-        Reference implementation of updateRGequations without optimization.
-        This reference implementation serves as a check for the more efficient
-        function updateRGequations.
+        Evaluate the RG equations (reference implementation)
 
-        This function takes approximately twice as long as updateRGequations.
+        Calculate the energy derivatives of the Floquet matrices
+        initialized in :meth:`~initialize`. For each such Floquet matrix
+        saved as attribute with name `name`, this method updates the
+        attribute `nameE` containing its energy derivative.
+
+        This method is typically called from within an ODE solver to
+        update the energy derivatives based on updated values of the
+        flow parameter (energy) and the Floquet matrices appearing in
+        the RG equation.
+
+        This function takes approximately twice as long as
+        :meth:`~updateRGequations`. It is intended for checking that
+        the results of the more efficient function
+        :meth:`~updateRGequations` are indeed correct.
+
+        See Also
+        --------
+        :meth:`~updateRGequations`
         """
         # Notation (mainly allow using objects without "self")
         z = self.z
@@ -1415,7 +1886,7 @@ class Kondo:
 
         # Note that the shifts in the energy arguments of all RGfunction
         # objects is implicitly handled by the multiplication operators.
-        # The muliplication operators for ReservoirMatrix objects are:
+        # The multiplication operators for ReservoirMatrix objects are:
         # @ for normal matrix multiplication (matrix indices ij, jk → ik with sum over j)
         # % for transpose matrix multiplication (matrix indices jk, ij → ik with sum over j)
         #                 ⎛ ⊤   ⊤⎞⊤
@@ -1557,9 +2028,19 @@ class Kondo:
 
     def updateRGequationsMinimal(self):
         """
-        Calculates the energy derivatives using the RG equations.
-        Only include Gamma, Z, G2, Ga.
-        The derivative of self.<name> is written to self.<name>E.
+        EXPERIMENTAL Evaluate RG equations for a reduced set of variables
+
+        Evaluate the RG equations excluding the current and related
+        functions. This function is intended to be used when searching
+        for poles in the RG flow.
+
+        Only the following Floquet matrices (or reservoir matrices)
+        are considered: :math:`\\Gamma, Z, G^2, G^a`
+        (spin relaxation rate, Z-function and vertex parametrization.
+
+        See Also
+        --------
+        :meth:`~updateRGequations`
         """
         # TODO: update handling of Ga
         if settings.ENFORCE_SYMMETRIC:
@@ -1677,9 +2158,7 @@ class Kondo:
 
 
     def check_symmetry(self):
-        """
-        Check if all symmetries are fulfilled
-        """
+        """Check if all symmetries are fulfilled"""
         self.gamma.check_symmetry()
         self.gammaL.check_symmetry()
         self.deltaGamma.check_symmetry()
@@ -1695,12 +2174,27 @@ class Kondo:
 
     def unpackFlattenedValues(self, flattened_values):
         """
-        Translate between 1d array used by the solver and Floquet matrices
-        used in RG equations. Given a 1d array, write the values of this array
-        to the Floquet matrices self.<values>.
+        Extract and update Floquet matrices from flat array
 
-        Order of flattened_values:
-        Γ, Z, δΓ, *G2, *G3, *IL, δΓL, ΓL, YL
+        The ODE solver works with a flat array which contains the
+        matrix elements of all Floquet matrices. This function takes
+        this array as an argument, unpacks the Floquet matrices, and
+        updates the Floquet matrices which are kept as attributes of
+        self.
+
+        The packing structure of the Floquet matrices depends on the
+        configuration of :attr:`~compact`.
+
+        Parameters
+        ----------
+        flattened_values : array
+            complex array containing the flattened Floquet matrices
+            in the order
+            :math:`\\Gamma, Z, \\delta\\Gamma, G^2, G^3, I^L, \\delta\\Gamma^L, \\Gamma^L, Y^L, G^a`.
+
+        See Also
+        --------
+        :meth:`~packFlattenedValues`, :meth:`~packFlattenedDerivatives`
         """
         if self.compact == 0:
             s = self.yL.values.size
@@ -1845,12 +2339,21 @@ class Kondo:
 
     def unpackFlattenedValuesMinimal(self, flattened_values):
         """
-        Translate between 1d array used by the solver and Floquet matrices
-        used in RG equations. Given a 1d array, write the values of this array
-        to the Floquet matrices self.<values>.
+        Extract and update subset of Floquet matrices from reduced flat array
 
-        Order of flattened_values:
-        Γ, Z, *G2, *Ga
+        This function is used for the reduced subset of Floquet
+        matrices treated in :meth:`~updateRGequationsMinimal`.
+
+        Parameters
+        ----------
+        flattened_values : array
+            complex array containing the flattened Floquet matrices
+            in the order
+            :math:`\\Gamma, Z, G^2, G^a`.
+
+        See Also
+        --------
+        :meth:`~unpackFlattenedValues`, :meth:`~packFlattenedValuesMinimal`, :meth:`~packFlattenedDerivativesMinimal`
         """
         if self.compact == 0:
             l = self.z.values.size
@@ -1934,11 +2437,22 @@ class Kondo:
 
     def packFlattenedDerivatives(self):
         """
-        Pack Floquet matrices representing derivatives in one flattened
-        (1d) array for the solver.
+        Pack all Floquet matrix derivatives in a single flat array
 
-        Order of flattened_values:
-        Γ, Z, δΓ, *G2, *G3, *IL, δΓL, ΓL, YL
+        The ODE solver works with a flat array which contains the
+        matrix elements of all Floquet matrices. This function packs
+        the Floquet matrices representing derivatives (as generated
+        by :meth:`~updateRGequations`) in a single flat array that
+        can be used by the solver.
+
+        The packing structure of the Floquet matrices depends on the
+        configuration of :attr:`~compact`. The Floquet matrices are
+        packed in the order
+        :math:`\\Gamma, Z, \\delta\\Gamma, G^2, G^3, I^L, \\delta\\Gamma^L, \\Gamma^L, Y^L, G^a`.
+
+        See Also
+        --------
+        :meth:`~unpackFlattenedValues`, :meth:`~packFlattenedValues`
         """
         if self.compact == 0:
             all_data = [
@@ -2122,11 +2636,16 @@ class Kondo:
 
     def packFlattenedDerivativesMinimal(self):
         """
-        Pack Floquet matrices representing derivatives in one flattened
-        (1d) array for the solver.
+        Pack subset of Floquet matrix derivatives in a single flat array
 
-        Order of flattened_values:
-        Γ, Z, δΓ, *G2, *Ga
+        This function is used for the reduced subset of Floquet
+        matrices treated in :meth:`~updateRGequationsMinimal`.
+        The Floquet matrices are packed in the order
+        :math:`\\Gamma, Z, G^2, G^a`.
+
+        See Also
+        --------
+        :meth:`~packFlattenedDerivatives`, :meth:`~unpackFlattenedValuesMinimal`, :meth:`~packFlattenedValuesMinimal`
         """
         if self.compact == 0:
             all_data = [
@@ -2205,12 +2724,21 @@ class Kondo:
 
     def packFlattenedValues(self):
         """
-        Translate between 1d array used by the solver and Floquet matrices
-        used in RG equations. Collect all Floquet matrices in one flattened
-        (1d) array.
+        Pack Floquet matrices in a single flat array
 
-        Order of flattened_values:
-        Γ, Z, δΓ, *G2, *G3, *IL, δΓL, ΓL, YL, [Ga]
+        The ODE solver works with a flat array which contains the
+        matrix elements of all Floquet matrices. This function packs
+        the Floquet matrices (as required by :meth:`~updateRGequations`)
+        in a single flat array that can be used by the solver.
+
+        The packing structure of the Floquet matrices depends on the
+        configuration of :attr:`~compact`. The Floquet matrices are
+        packed in the order
+        :math:`\\Gamma, Z, \\delta\\Gamma, G^2, G^3, I^L, \\delta\\Gamma^L, \\Gamma^L, Y^L, G^a`.
+
+        See Also
+        --------
+        :meth:`~unpackFlattenedValues`, :meth:`~packFlattenedDerivatives`
         """
         if self.compact == 0:
             all_data = [
@@ -2371,12 +2899,16 @@ class Kondo:
 
     def packFlattenedValuesMinimal(self):
         """
-        Translate between 1d array used by the solver and Floquet matrices
-        used in RG equations. Collect all Floquet matrices in one flattened
-        (1d) array.
+        Pack subset of Floquet matrices in a single flat array
 
-        Order of flattened_values:
-        Γ, Z, δΓ, *G2, *G3, *IL, δΓL, ΓL, YL
+        This function is used for the reduced subset of Floquet
+        matrices treated in :meth:`~updateRGequationsMinimal`.
+        The Floquet matrices are packed in the order
+        :math:`\\Gamma, Z, G^2, G^a`.
+
+        See Also
+        --------
+        :meth:`~packFlattenedDerivatives`, :meth:`~unpackFlattenedValuesMinimal`, :meth:`~packFlattenedValuesMinimal`
         """
         if self.compact == 0:
             all_data = [
@@ -2454,6 +2986,7 @@ class Kondo:
 
 
     def hash(self):
+        """Generate hash based on all Floquet matrix data"""
         data = self.packFlattenedValues()
         data.flags["WRITEABLE"] = False
         return hashlib.sha1(data.data).hexdigest()
@@ -2461,12 +2994,29 @@ class Kondo:
 
     def odeFunctionIm(self, imenergy, flattened_values):
         """
-        ODE as given to the solver for solving the RG equations along the
-        imaginary axis. Given a flattened array containing all Floquet
-        matrices, evaluate the RG equations and return a flattened array of
-        all derivatives.
-        imenergy = Im(E) is used as function argument since the solver cannot
-        handle complex flow parameters.
+        ODE function as required by the solver
+
+        Wrapper for :meth:`~updateRGequations` that can be used by
+        the ODE solver for solving the RG flow along the imaginary
+        axis.
+
+        Parameters
+        ----------
+        imenergy : float
+            imaginary part of the energy, flow parameter
+
+        flattened_values : array
+            flat array containing the matrix elements of all Floquet
+            matrices, see :meth:`~unpackFlattenedValues`.
+
+        Returns
+        -------
+        array : flat array containing the derivatives of all Floquet
+            matrices, see :meth:`~packFlattenedDerivatives`
+
+        See Also
+        --------
+        :meth:`~odeFunctionRe`
         """
         try:
             if self.save_filename and self.save_iterations > 0 and self.iterations % self.save_iterations == 0:
@@ -2508,12 +3058,29 @@ class Kondo:
 
     def odeFunctionImMinimal(self, imenergy, flattened_values):
         """
-        ODE as given to the solver for solving the RG equations along the
-        imaginary axis. Given a flattened array containing all Floquet
-        matrices, evaluate the RG equations and return a flattened array of
-        all derivatives.
-        imenergy = Im(E) is used as function argument since the solver cannot
-        handle complex flow parameters.
+        ODE function for subset of RG equations as required by the solver
+
+        Wrapper for :meth:`~updateRGequationsMinimal` that can be used
+        by the ODE solver for solving the RG flow along the imaginary
+        axis.
+
+        Parameters
+        ----------
+        imenergy : float
+            imaginary part of the energy, flow parameter
+
+        flattened_values : array
+            flat array containing the matrix elements of all Floquet
+            matrices, see :meth:`~unpackFlattenedValuesMinimal`.
+
+        Returns
+        -------
+        array : flat array containing the derivatives of all Floquet
+            matrices, see :meth:`~packFlattenedDerivativesMinimal`
+
+        See Also
+        --------
+        :meth:`~odeFunctionIm`, :meth:`~odeFunctionImMinimal`
         """
         self.global_properties.energy = self.energy.real + 1j*imenergy
         self.unpackFlattenedValuesMinimal(flattened_values)
@@ -2542,10 +3109,29 @@ class Kondo:
 
     def odeFunctionRe(self, reenergy, flattened_values):
         """
-        ODE as given to the solver for solving the RG equations along the
-        real axis. Given a flattened array containing all Floquet matrices,
-        evaluate the RG equations and return a flattened array of all
-        derivatives.
+        ODE function as required by the solver
+
+        Wrapper for :meth:`~updateRGequations` that can be used by
+        the ODE solver for solving the RG flow along the real
+        axis.
+
+        Parameters
+        ----------
+        imenergy : float
+            imaginary part of the energy, flow parameter
+
+        flattened_values : array
+            flat array containing the matrix elements of all Floquet
+            matrices, see :meth:`~unpackFlattenedValues`.
+
+        Returns
+        -------
+        array : flat array containing the derivatives of all Floquet
+            matrices, see :meth:`~packFlattenedDerivatives`
+
+        See Also
+        --------
+        :meth:`~odeFunctionIm`
         """
         if self.save_filename and self.save_iterations > 0 and self.iterations % self.save_iterations == 0:
             try:
@@ -2573,17 +3159,32 @@ class Kondo:
 
     def solveOdeIm(self, eiminit, eimfinal, init_values=None, only_final=False, **solveopts):
         """
-        Solve the RG equations along the imaginary axis, starting from
-        E = Ereal + eiminit*1j and ending at E = Ereal + eimfinal*1j
-        where Ereal is the real part of the current energy.
+        Solve RG equations in the direction of the imaginary axis
 
-        Other arguments:
-        init_values : flattened array of initial values, by default taken from
-                self.packFlattenedValues()
-        only_final : only save final result, do not save the RG flow.
-                This saves memory.
-        **solveopts : arguments that are directly passed on to the solver. Most
-                relevant are rtol and atol.
+        Run the RG flow from E.imag=eiminit to E.imag=eimfinal while
+        keeping the real part of the energy E unchanged.
+
+        Parameters
+        ----------
+        eiminit : float
+            starting value of flow parameter :meth:`\\Lambda = \\Im(E)`,
+            must be larger than eimfinal
+        eimfinal : float
+            final value of flow parameter :meth:`\\Lambda = \\Im(E)`
+        init_values : array, optional
+            lattened array of initial values, by default taken from
+            :meth:`~packFlattenedValues`
+        only_final : bool, default=False
+            only save final result, do not save the RG flow. This
+            significantly reduces the memory consumption.
+        **solveopts : dict
+            arguments that are directly passed to
+            :meth:`scipy.integrate.solve_ivp`. Most relevant are rtol
+            and atol.
+
+        See Also
+        --------
+        :meth:`~solveOdeRe`
         """
         assert np.allclose(self.energy.imag, eiminit)
         if init_values is None:
@@ -2600,17 +3201,32 @@ class Kondo:
 
     def solveOdeRe(self, reEinit, reEfinal, init_values=None, only_final=False, **solveopts):
         """
-        Solve the RG equations along the real axis, starting from
-        E = reEinit + 1j*Eimag and ending at E = reEfinal + 1j*Eimag.
-        where Eimag is the imaginary part of the current energy.
+        Solve RG equations in the direction of the real axis
 
-        Other arguments:
-        init_values : flattened array of initial values, by default taken from
-                self.packFlattenedValues()
-        only_final : only save final result, do not save the RG flow.
-                This saves memory.
-        **solveopts : arguments that are directly passed on to the solver. Most
-                relevant are rtol and atol.
+        Run the RG flow from E.real=reEinit to E.real=reEfinal while
+        keeping the imaginary part of the energy E unchanged.
+
+        Parameters
+        ----------
+        reEinit : float
+            starting value of :meth:`\\Re(E)`,
+            must be larger than eimfinal
+        reEfinal : float
+            final value of :meth:`\\Re(E)`
+        init_values : array, optional
+            lattened array of initial values, by default taken from
+            :meth:`~packFlattenedValues`
+        only_final : bool, default=False
+            only save final result, do not save the RG flow. This
+            significantly reduces the memory consumption.
+        **solveopts : dict
+            arguments that are directly passed to
+            :meth:`scipy.integrate.solve_ivp`. Most relevant are rtol
+            and atol.
+
+        See Also
+        --------
+        :meth:`~solveOdeIm`
         """
         assert abs(self.energy.real - reEinit) < 1e-8
         if init_values is None:
@@ -2627,8 +3243,15 @@ class Kondo:
 
     def findPole(self, **solveopts):
         """
-        Should be called after RG flow has run until E=0 and
-        values have been saved.
+        EXPERIMENTAL Search for poles.
+
+        Search for a pole on the imaginary axis. Should be called
+        after RG flow has run until E=0 and values have been saved.
+
+        Parameters
+        ----------
+        **solveropts : dict
+            arguments passed directly to :meth:`scipy.integrate.solve_ivp`
         """
         assert abs(self.energy.real) < 1e-12
         init_values = self.packFlattenedValuesMinimal()
@@ -2649,6 +3272,8 @@ class Kondo:
 
     def save_compact(self, values, compressed=False):
         """
+        Save current state of the RG flow in compact form
+
         Automatically save current state of the RG flow in the most compact
         form. The file name will be
             self.save_filename % self.iterations
@@ -2656,6 +3281,14 @@ class Kondo:
             self.save_filename.format(self.iterations).
         In a computationally expensive RG flow this allows saving intermediate
         steps of the RG flow.
+
+        Parameters
+        ----------
+        values : array
+            flat array containing matrix elements of all Floquet matrices,
+            typically taken from :meth:`~packFlattenedValues`
+        compressed : bool, default=False
+            compress the file when saving
         """
         try:
             filename = self.save_filename%self.iterations
@@ -2671,8 +3304,12 @@ class Kondo:
 
     def load_compact(self, filename):
         """
-        Load a file that was created with Kondo.save_compact. This overwrites
-        the current state of self with the values given in the file.
+        Load a file saved with :meth:`~save_compact`
+
+        Parameters
+        ----------
+        filename : str
+            path to saved file
         """
         data = np.load(filename)
         assert data['compact'] == self.compact

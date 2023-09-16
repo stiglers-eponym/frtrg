@@ -7,7 +7,9 @@ special symmetry
 Module defining class SymRGfunction for the special symmetric case of driving
 fulfilling  V(t + T/2) = - V(t)  with T = 2π/Ω = driving period.
 
-See also: rtrg.py
+See Also
+--------
+rtrg.py
 """
 
 from .rtrg import *
@@ -19,8 +21,8 @@ OVERWRITE_BOTH = bytes((3,))
 
 class SymRGfunction(RGfunction):
     """
-    Subclass of RGfunction for Floquet matrices representing functions which in
-    time-domain fulfill  f(t + T/2) = ±f(t).
+    Subclass of :class:`RGfunction` for Floquet matrices representing
+    functions which in time-domain fulfill :math:`f(t + T/2) = \pm f(t)`.
     """
     def __init__(self, global_properties, values, symmetry=0, diag=None, offdiag=None, **kwargs):
         self.global_properties = global_properties
