@@ -36,7 +36,7 @@ This code can be used as a python library, or to generate and save data.
 The individual modules contain a brief documentation in the beginning.
 
 ### Library
-The FRTRG module provides the following submodules:
+The FRTRG package provides the following modules:
 * `kondo`: FRTRG solution of the isotropic spin-1/2 Kondo model with two reservoirs. Create a `Kondo` object and use `Kondo.run()` to run the RG flow.
 * `data_management`: save and load Kondo RG flow results in a database and in HDF5 files. Use `DataManager.list()` to obtain main results (such as the conductance) in a pandas table.
 * `gen_data`: interface for generating data for AC driving from the command line and for saving the results.

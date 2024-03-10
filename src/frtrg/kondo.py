@@ -64,10 +64,12 @@ from scipy.integrate import solve_ivp
 from scipy.optimize import newton
 from . import settings
 from .rtrg import GlobalRGproperties, RGfunction
-from .reservoirmatrix import ReservoirMatrix, \
-        einsum_34_12_43, \
-        einsum_34_12_43_double, \
-        product_combinations
+from .reservoirmatrix import (
+    ReservoirMatrix,
+    einsum_34_12_43,
+    einsum_34_12_43_double,
+    product_combinations,
+)
 from .compact_rtrg import SymRGfunction
 from . import frequency_integral
 
@@ -101,8 +103,8 @@ def driving_voltage(tau, *fourier_coef):
     """
     res = np.zeros_like(tau)
     for n, c in enumerate(fourier_coef, 1):
-        res += (c * np.exp(2j*np.pi*n*tau)).real
-    return 2*res
+        res += (c * np.exp(2j * np.pi * n * tau)).real
+    return 2 * res
 
 
 def driving_voltage_integral(tau, *fourier_coef):
@@ -130,8 +132,8 @@ def driving_voltage_integral(tau, *fourier_coef):
     """
     res = np.zeros_like(tau)
     for n, c in enumerate(fourier_coef, 1):
-        res += (c/n * (np.exp(2j*np.pi*n*tau) - 1)).imag
-    return 2*res
+        res += (c / n * (np.exp(2j * np.pi * n * tau) - 1)).imag
+    return 2 * res
 
 
 def gen_init_matrix(nmax, *fourier_coef, resonant_dc_shift=0, resolution=5000):
@@ -165,37 +167,45 @@ def gen_init_matrix(nmax, *fourier_coef, resonant_dc_shift=0, resolution=5000):
     if len(fourier_coef) == 1 or np.allclose(fourier_coef[1:], 0):
         # Simple driving, only one frequency:
         coef = bessel_jn(
-                np.arange(-2*nmax+resonant_dc_shift, 2*nmax+resonant_dc_shift+1),
-                -2*fourier_coef[0])
+            np.arange(-2 * nmax + resonant_dc_shift, 2 * nmax + resonant_dc_shift + 1),
+            -2 * fourier_coef[0],
+        )
     elif len(fourier_coef) == 0:
-        coef = np.zeros(4*nmax+1)
-        coef[2*nmax-resonant_dc_shift] = 1
+        coef = np.zeros(4 * nmax + 1)
+        coef[2 * nmax - resonant_dc_shift] = 1
     else:
         # Anharmonic driving: use FFT
-        assert resolution > 2*nmax + abs(resonant_dc_shift)
+        assert resolution > 2 * nmax + abs(resonant_dc_shift)
         assert resolution % 2 == 0
-        fft_coef = fft(np.exp(
-                    -1j*driving_voltage_integral(
-                        np.linspace(0, 1, resolution, endpoint=False),
-                        *fourier_coef
-                    )
-                ))
-        coef = np.ndarray(4*nmax+1, dtype=np.complex128)
-        coef[2*nmax-resonant_dc_shift:] = fft_coef[:2*nmax+resonant_dc_shift+1].conjugate() / resolution
-        coef[:2*nmax-resonant_dc_shift] = fft_coef[-2*nmax+resonant_dc_shift:].conjugate() / resolution
-    init_matrix = np.ndarray((2*nmax+1, 2*nmax+1), dtype=np.complex128)
-    for j in range(2*nmax+1):
-        init_matrix[:,j] = coef[2*nmax-j:4*nmax+1-j]
+        fft_coef = fft(
+            np.exp(
+                -1j
+                * driving_voltage_integral(
+                    np.linspace(0, 1, resolution, endpoint=False), *fourier_coef
+                )
+            )
+        )
+        coef = np.ndarray(4 * nmax + 1, dtype=np.complex128)
+        coef[2 * nmax - resonant_dc_shift :] = (
+            fft_coef[: 2 * nmax + resonant_dc_shift + 1].conjugate() / resolution
+        )
+        coef[: 2 * nmax - resonant_dc_shift] = (
+            fft_coef[-2 * nmax + resonant_dc_shift :].conjugate() / resolution
+        )
+    init_matrix = np.ndarray((2 * nmax + 1, 2 * nmax + 1), dtype=np.complex128)
+    for j in range(2 * nmax + 1):
+        init_matrix[:, j] = coef[2 * nmax - j : 4 * nmax + 1 - j]
     return init_matrix
 
 
 def solveTV0_scalar_order2(
-        d,
-        tk = 1, # Caution: prior to version 14.15 this was 0.32633176486110027
-        rtol = 1e-8,
-        atol = 1e-10,
-        full_output = False,
-        **solveopts):
+    d,
+    tk=1,  # Caution: prior to version 14.15 this was 0.32633176486110027
+    rtol=1e-8,
+    atol=1e-10,
+    full_output=False,
+    **solveopts,
+):
     """
     Solve 2nd order T=0 equilibrium RG equations from 0 to `d`
 
@@ -258,41 +268,36 @@ def solveTV0_scalar_order2(
     :meth:`.solveTV0_scalar`
     """
     # Initial conditions
-    j0 = 2/(np.pi*3**.5)
-    z0 = 1/(2*j0+1)
-    theta0 = 1/z0 - 1
-    gamma0 = tk * np.exp(1/(2*j0)) / j0
+    j0 = 2 / (np.pi * 3**0.5)
+    z0 = 1 / (2 * j0 + 1)
+    theta0 = 1 / z0 - 1
+    gamma0 = tk * np.exp(1 / (2 * j0)) / j0
 
     def ode_function_imaxis(lmbd, values):
         """RG eq. for Kondo model on imaginary axis, ODE of functions of variable lmbd = Λ"""
         gamma, theta, j = values
         dgamma = theta
-        dtheta = -4*j**2/(lmbd + gamma)
-        dj = dtheta/2
+        dtheta = -4 * j**2 / (lmbd + gamma)
+        dj = dtheta / 2
         return np.array([dgamma, dtheta, dj])
 
     result = solve_ivp(
-            ode_function_imaxis,
-            (0, d),
-            np.array([gamma0, theta0, j0]),
-            t_eval = None if full_output else (d,),
-            rtol = rtol,
-            atol = atol,
-            **solveopts)
+        ode_function_imaxis,
+        (0, d),
+        np.array([gamma0, theta0, j0]),
+        t_eval=None if full_output else (d,),
+        rtol=rtol,
+        atol=atol,
+        **solveopts,
+    )
     assert result.success
 
     gamma, theta, j = result.y[:, -1]
-    z = 1/(1+theta)
+    z = 1 / (1 + theta)
     return (gamma, z, j, result)
 
 
-def solveTV0_scalar(
-        d,
-        tk = 1,
-        rtol = 1e-8,
-        atol = 1e-10,
-        full_output = False,
-        **solveopts):
+def solveTV0_scalar(d, tk=1, rtol=1e-8, atol=1e-10, full_output=False, **solveopts):
     """
     Solve T=0 equilibrium RG equations from 0 to `d`
 
@@ -351,11 +356,11 @@ def solveTV0_scalar(
     :meth:`~solveTV0_scalar_order2`
     """
     # Initial conditions
-    jbar = 2/(np.pi*np.sqrt(3))
-    j0 = jbar/(1-jbar)**2
+    jbar = 2 / (np.pi * np.sqrt(3))
+    j0 = jbar / (1 - jbar) ** 2
     # Θ := d/dΛ Γ = 1/Z - 1
-    theta0 = (1-jbar)**-2 - 1
-    gamma0 = np.sqrt((1-jbar)/jbar)*np.exp(1/(2*jbar)) * tk
+    theta0 = (1 - jbar) ** -2 - 1
+    gamma0 = np.sqrt((1 - jbar) / jbar) * np.exp(1 / (2 * jbar)) * tk
 
     # Solve on imaginary axis
 
@@ -363,34 +368,30 @@ def solveTV0_scalar(
         """RG eq. for Kondo model on imaginary axis, ODE of functions of variable lmbd = Λ"""
         gamma, theta, j = values
         dgamma = theta
-        dtheta = -4*j**2/(lmbd + gamma)
-        dj = dtheta*(1 + j/(1 + theta))/2
+        dtheta = -4 * j**2 / (lmbd + gamma)
+        dj = dtheta * (1 + j / (1 + theta)) / 2
         return np.array([dgamma, dtheta, dj])
 
     t_eval = solveopts.pop("t_eval", None) if full_output else (d,)
     result = solve_ivp(
-            ode_function_imaxis,
-            (0, d),
-            np.array([gamma0, theta0, j0]),
-            t_eval = t_eval,
-            rtol = rtol,
-            atol = atol,
-            **solveopts)
+        ode_function_imaxis,
+        (0, d),
+        np.array([gamma0, theta0, j0]),
+        t_eval=t_eval,
+        rtol=rtol,
+        atol=atol,
+        **solveopts,
+    )
     assert result.success
 
     gamma, theta, j = result.y[:, -1]
-    z = 1/(1+theta)
+    z = 1 / (1 + theta)
     return (gamma, z, j, result)
 
 
 def solveTV0_Utransformed(
-        d,
-        properties,
-        tk = 1,
-        truncation_order = 3,
-        rtol = 1e-8,
-        atol = 1e-10,
-        **solveopts):
+    d, properties, tk=1, truncation_order=3, rtol=1e-8, atol=1e-10, **solveopts
+):
     """
     Calculate initial condition Floquet matrices for transformed Hamiltonian
 
@@ -471,66 +472,64 @@ def solveTV0_Utransformed(
         """RG eq. for Kondo model for constant Im(E), ODE of functions of rE = Re(E)"""
         gamma, theta, j = values
         dgamma = theta
-        dtheta = -4*j**2/(d - 1j*rE + gamma)
+        dtheta = -4 * j**2 / (d - 1j * rE + gamma)
         if truncation_order == 3:
-            dj = dtheta*(1 + j/(1 + theta))/2
+            dj = dtheta * (1 + j / (1 + theta)) / 2
         elif truncation_order == 2:
-            dj = dtheta/2
-        return -1j*np.array([dgamma, dtheta, dj])
+            dj = dtheta / 2
+        return -1j * np.array([dgamma, dtheta, dj])
 
     # Define flattened array of real parts of energy values, for which we want
     # to know, Γ, Z, J
     nmax_plus = nmax + abs(properties.resonant_dc_shift)
     if vb:
-        energies_orig = \
-                properties.energy.real \
-                + properties.vdc*np.arange(-vb, vb+1).reshape((2*vb+1, 1)) \
-                + properties.omega*np.arange(-nmax_plus, nmax_plus+1).reshape((1, 2*nmax_plus+1))
+        energies_orig = (
+            properties.energy.real
+            + properties.vdc * np.arange(-vb, vb + 1).reshape((2 * vb + 1, 1))
+            + properties.omega
+            * np.arange(-nmax_plus, nmax_plus + 1).reshape((1, 2 * nmax_plus + 1))
+        )
     else:
-        energies_orig = properties.energy.real \
-                + properties.omega * np.arange(-nmax_plus, nmax_plus+1)
+        energies_orig = properties.energy.real + properties.omega * np.arange(
+            -nmax_plus, nmax_plus + 1
+        )
 
     energies = energies_orig.flatten()
     energies_unique, inverse_indices = np.unique(energies, return_inverse=True)
     if energies_unique.size == 1:
-        y = scalar_solver.y[:,-1].reshape((3,1))
+        y = scalar_solver.y[:, -1].reshape((3, 1))
     else:
         split_idx = np.searchsorted(energies_unique, 0)
         energies_left = energies_unique[:split_idx]
         energies_right = energies_unique[split_idx:]
 
         result_left = solve_ivp(
-                ode_function_imconst,
-                t_span = (0, energies_left[0]),
-                y0 = np.array(scalar_solver.y[:,-1], dtype=np.complex128),
-                t_eval = energies_left[::-1],
-                **solveopts
-            )
+            ode_function_imconst,
+            t_span=(0, energies_left[0]),
+            y0=np.array(scalar_solver.y[:, -1], dtype=np.complex128),
+            t_eval=energies_left[::-1],
+            **solveopts,
+        )
         assert result_left.success
         result_right = solve_ivp(
-                ode_function_imconst,
-                t_span = (0, energies_right[-1]),
-                y0 = np.array(scalar_solver.y[:,-1], dtype=np.complex128),
-                t_eval = energies_right,
-                **solveopts
-            )
+            ode_function_imconst,
+            t_span=(0, energies_right[-1]),
+            y0=np.array(scalar_solver.y[:, -1], dtype=np.complex128),
+            t_eval=energies_right,
+            **solveopts,
+        )
         assert result_right.success
-        y = np.concatenate((result_left.y[:,::-1], result_right.y), axis=1)
+        y = np.concatenate((result_left.y[:, ::-1], result_right.y), axis=1)
     gamma = y[0][inverse_indices].reshape(energies_orig.shape)
-    z = ( 1/(1 + y[1]) )[inverse_indices].reshape(energies_orig.shape)
+    z = (1 / (1 + y[1]))[inverse_indices].reshape(energies_orig.shape)
     j = y[2][inverse_indices].reshape(energies_orig.shape)
 
     return gamma, z, j
 
 
 def solveTV0_untransformed(
-        d,
-        properties,
-        tk = 1,
-        truncation_order = 3,
-        rtol = 1e-8,
-        atol = 1e-10,
-        **solveopts):
+    d, properties, tk=1, truncation_order=3, rtol=1e-8, atol=1e-10, **solveopts
+):
     """
     Calculate initial condition Floquet matrices for untransformed Hamiltonian
 
@@ -610,60 +609,69 @@ def solveTV0_untransformed(
         """RG eq. for Kondo model for constant Im(E), ODE of functions of rE = Re(E)"""
         gamma, theta, j = values
         dgamma = theta
-        dtheta = -4*j**2/(d - 1j*rE + gamma)
+        dtheta = -4 * j**2 / (d - 1j * rE + gamma)
         if truncation_order == 3:
-            dj = dtheta*(1 + j/(1 + theta))/2
+            dj = dtheta * (1 + j / (1 + theta)) / 2
         elif truncation_order == 2:
-            dj = dtheta/2
-        return -1j*np.array([dgamma, dtheta, dj])
+            dj = dtheta / 2
+        return -1j * np.array([dgamma, dtheta, dj])
 
-    shifts = properties.mu.values \
-            + properties.omega*np.diag(np.arange(-nmax, nmax+1)).reshape((1,2*nmax+1,2*nmax+1))
-    #assert np.allclose(shifts.imag, 0)
+    shifts = properties.mu.values + properties.omega * np.diag(
+        np.arange(-nmax, nmax + 1)
+    ).reshape((1, 2 * nmax + 1, 2 * nmax + 1))
+    # assert np.allclose(shifts.imag, 0)
     eigvals, eigvecs = np.linalg.eigh(shifts)
     assert np.allclose(eigvals.imag, 0)
-    assert all(np.allclose(eigvecs[i] @ np.diag(eigvals[i]) @ eigvecs[i].T.conjugate(), shifts[i]) for i in range(2*vb+1))
+    assert all(
+        np.allclose(
+            eigvecs[i] @ np.diag(eigvals[i]) @ eigvecs[i].T.conjugate(), shifts[i]
+        )
+        for i in range(2 * vb + 1)
+    )
 
     energies = eigvals.flatten()
     energies_unique, inverse_indices = np.unique(energies, return_inverse=True)
     if energies_unique.size == 1:
-        y = scalar_solver.y[:,-1].reshape((3,1))
+        y = scalar_solver.y[:, -1].reshape((3, 1))
     else:
         split_idx = np.searchsorted(energies_unique, 0)
         energies_left = energies_unique[:split_idx]
         energies_right = energies_unique[split_idx:]
 
         result_left = solve_ivp(
-                ode_function_imconst,
-                t_span = (0, energies_left[0]),
-                y0 = np.array(scalar_solver.y[:,-1], dtype=np.complex128),
-                t_eval = energies_left[::-1],
-                **solveopts
-            )
+            ode_function_imconst,
+            t_span=(0, energies_left[0]),
+            y0=np.array(scalar_solver.y[:, -1], dtype=np.complex128),
+            t_eval=energies_left[::-1],
+            **solveopts,
+        )
         assert result_left.success
         result_right = solve_ivp(
-                ode_function_imconst,
-                t_span = (0, energies_right[-1]),
-                y0 = np.array(scalar_solver.y[:,-1], dtype=np.complex128),
-                t_eval = energies_right,
-                **solveopts
-            )
+            ode_function_imconst,
+            t_span=(0, energies_right[-1]),
+            y0=np.array(scalar_solver.y[:, -1], dtype=np.complex128),
+            t_eval=energies_right,
+            **solveopts,
+        )
         assert result_right.success
-        y = np.concatenate((result_left.y[:,::-1], result_right.y), axis=1)
+        y = np.concatenate((result_left.y[:, ::-1], result_right.y), axis=1)
     gamma_raw = y[0][inverse_indices].reshape(eigvals.shape)
-    z_raw = ( 1/(1 + y[1]) )[inverse_indices].reshape(eigvals.shape)
+    z_raw = (1 / (1 + y[1]))[inverse_indices].reshape(eigvals.shape)
     j_raw = y[2][inverse_indices].reshape(eigvals.shape)
 
-    gamma = np.einsum('kij,kj,klj->kil', eigvecs, gamma_raw, eigvecs.conjugate())
-    z = np.einsum('kij,kj,klj->kil', eigvecs, z_raw, eigvecs.conjugate())
-    j = np.einsum('kij,kj,klj->kil', eigvecs, j_raw, eigvecs.conjugate())
+    gamma = np.einsum("kij,kj,klj->kil", eigvecs, gamma_raw, eigvecs.conjugate())
+    z = np.einsum("kij,kj,klj->kil", eigvecs, z_raw, eigvecs.conjugate())
+    j = np.einsum("kij,kj,klj->kil", eigvecs, j_raw, eigvecs.conjugate())
     if truncation_order == 3:
-        zj_square = np.einsum('kij,kj,klj->kil', eigvecs, (j_raw*z_raw)**2, eigvecs.conjugate())
+        zj_square = np.einsum(
+            "kij,kj,klj->kil", eigvecs, (j_raw * z_raw) ** 2, eigvecs.conjugate()
+        )
         return gamma, z, j, zj_square
     else:
-        j_square = np.einsum('kij,kj,klj->kil', eigvecs, j_raw**2, eigvecs.conjugate())
+        j_square = np.einsum(
+            "kij,kj,klj->kil", eigvecs, j_raw**2, eigvecs.conjugate()
+        )
         return gamma, z, j, j_square
-
 
 
 class Kondo:
@@ -708,26 +716,28 @@ class Kondo:
         currentE : derivative of self.current with respect to E
     """
 
-    def __init__(self,
-            unitary_transformation = True,
-            nmax = 0,
-            padding = 0,
-            vdc = 0,
-            vac = 0,
-            omega = 0,
-            d = 1e9,
-            fourier_coef = None,
-            voltage_branches = 0,
-            include_Ga = False,
-            solve_integral_exactly = False,
-            integral_method = -15,
-            resonant_dc_shift = 0,
-            xL = 0.5,
-            compact = 0,
-            simplified_initial_conditions = False,
-            improved_initial_conditions = True,
-            truncation_order = 3,
-            **rg_properties):
+    def __init__(
+        self,
+        unitary_transformation=True,
+        nmax=0,
+        padding=0,
+        vdc=0,
+        vac=0,
+        omega=0,
+        d=1e9,
+        fourier_coef=None,
+        voltage_branches=0,
+        include_Ga=False,
+        solve_integral_exactly=False,
+        integral_method=-15,
+        resonant_dc_shift=0,
+        xL=0.5,
+        compact=0,
+        simplified_initial_conditions=False,
+        improved_initial_conditions=True,
+        truncation_order=3,
+        **rg_properties,
+    ):
         """
         Main class for solving the periodically driven Kondo problem
 
@@ -837,16 +847,17 @@ class Kondo:
             order truncation with vertex renormalization.
         """
         self.global_properties = GlobalRGproperties(
-                nmax = nmax,
-                omega = omega,
-                vdc = 0,
-                mu = None,
-                voltage_branches = voltage_branches,
-                resonant_dc_shift = resonant_dc_shift,
-                padding = padding,
-                fourier_coef = fourier_coef,
-                energy = 0j,
-                **rg_properties)
+            nmax=nmax,
+            omega=omega,
+            vdc=0,
+            mu=None,
+            voltage_branches=voltage_branches,
+            resonant_dc_shift=resonant_dc_shift,
+            padding=padding,
+            fourier_coef=fourier_coef,
+            energy=0j,
+            **rg_properties,
+        )
         assert truncation_order in (2, 3)
         self.truncation_order = truncation_order
         self.global_settings = settings.export()
@@ -861,7 +872,9 @@ class Kondo:
             assert not solve_integral_exactly
         if solve_integral_exactly:
             if padding > 0:
-                settings.logger.warn("solve_integral_exactly and padding>0: will not handle padding consistenly")
+                settings.logger.warn(
+                    "solve_integral_exactly and padding>0: will not handle padding consistenly"
+                )
             if integral_method == -15:
                 self.integral_method = -1
                 settings.logger.warn("setting integral_method = -1")
@@ -893,7 +906,7 @@ class Kondo:
             raise ValueError("Bad parameters: resonant_dc_shift must be <= nmax")
         if compact or voltage_branches == 0:
             assert unitary_transformation
-            assert self.vdc == omega*resonant_dc_shift
+            assert self.vdc == omega * resonant_dc_shift
             if compact:
                 assert voltage_branches == 0
                 assert fourier_coef is None or np.allclose(fourier_coef[1::2], 0)
@@ -902,29 +915,33 @@ class Kondo:
                 # This implementation cannot handle resonant_dc_shift in
                 # combination with "compact" matrices.
                 assert self.resonant_dc_shift == 0
-        assert d.imag == 0.
+        assert d.imag == 0.0
         self.d = d
 
         if self.unitary_transformation:
             self.compact = compact
-            self.global_properties.vdc = vdc - resonant_dc_shift*omega
+            self.global_properties.vdc = vdc - resonant_dc_shift * omega
         else:
             assert resonant_dc_shift == 0
-            mu = np.zeros((2*nmax+1, 2*nmax+1), dtype=np.complex128)
-            mu[np.diag_indices(2*nmax+1)] = vdc
+            mu = np.zeros((2 * nmax + 1, 2 * nmax + 1), dtype=np.complex128)
+            mu[np.diag_indices(2 * nmax + 1)] = vdc
             if fourier_coef is None:
-                mu[np.arange(2*nmax), np.arange(1, 2*nmax+1)] = vac/2
-                mu[np.arange(1, 2*nmax+1), np.arange(2*nmax)] = vac/2
+                mu[np.arange(2 * nmax), np.arange(1, 2 * nmax + 1)] = vac / 2
+                mu[np.arange(1, 2 * nmax + 1), np.arange(2 * nmax)] = vac / 2
             else:
                 for i, f in enumerate(fourier_coef, 1):
-                    mu[np.arange(2*nmax+1-i), np.arange(i, 2*nmax+1)] = f
-                    mu[np.arange(i, 2*nmax+1), np.arange(2*nmax+1-i)] = f.conjugate()
+                    mu[np.arange(2 * nmax + 1 - i), np.arange(i, 2 * nmax + 1)] = f
+                    mu[
+                        np.arange(i, 2 * nmax + 1), np.arange(2 * nmax + 1 - i)
+                    ] = f.conjugate()
             self.global_properties.mu = RGfunction(
-                    self.global_properties,
-                    np.arange(-voltage_branches, voltage_branches+1)\
-                            .reshape((2*voltage_branches+1,1,1)) \
-                            * mu.reshape((1,2*nmax+1,2*nmax+1)),
-                    symmetry = -1)
+                self.global_properties,
+                np.arange(-voltage_branches, voltage_branches + 1).reshape(
+                    (2 * voltage_branches + 1, 1, 1)
+                )
+                * mu.reshape((1, 2 * nmax + 1, 2 * nmax + 1)),
+                symmetry=-1,
+            )
         self.total_iterations = 0
 
     def __getattr__(self, name):
@@ -941,22 +958,23 @@ class Kondo:
         parameters
         """
         return {
-                'method' : 'J' if self.unitary_transformation else 'mu',
-                'Ω' : self.omega,
-                'nmax' : self.nmax,
-                'padding' : self.padding,
-                'Vdc' : self.vdc,
-                'Vac' : self.vac,
-                'V_branches' : self.voltage_branches,
-                'Vac' : getattr(self, 'vac', None),
-                'D' : getattr(self, 'd', None),
-                'solveopts' : getattr(self, 'solveopts', None),
-                'xL' : getattr(self, 'xL', None),
-                }
+            "method": "J" if self.unitary_transformation else "mu",
+            "Ω": self.omega,
+            "nmax": self.nmax,
+            "padding": self.padding,
+            "Vdc": self.vdc,
+            "Vac": self.vac,
+            "V_branches": self.voltage_branches,
+            "Vac": getattr(self, "vac", None),
+            "D": getattr(self, "d", None),
+            "solveopts": getattr(self, "solveopts", None),
+            "xL": getattr(self, "xL", None),
+        }
 
-    def initialize_untransformed(self,
-            **solveopts,
-            ):
+    def initialize_untransformed(
+        self,
+        **solveopts,
+    ):
         """
         Initialize objects appearing in the RG equations.
 
@@ -979,18 +997,18 @@ class Kondo:
         --------
         :meth:`~initialize`, :meth:`~initialize_Utransformed`
         """
-        sqrtxx = np.sqrt(self.xL*(1-self.xL))
+        sqrtxx = np.sqrt(self.xL * (1 - self.xL))
         symmetry = 0 if settings.IGNORE_SYMMETRIES else 1
-
 
         #### Initial conditions from exact results at T=V=0
         # Get Γ, Z and J (G2) for T=V=0.
         # if truncation_order==2: zj0_square is just J^2
         gamma0, z0, j0, zj0_square = solveTV0_untransformed(
-                d=self.d,
-                properties=self.global_properties,
-                truncation_order=self.truncation_order,
-                **solveopts)
+            d=self.d,
+            properties=self.global_properties,
+            truncation_order=self.truncation_order,
+            **solveopts,
+        )
 
         # Create Γ and Z with the just calculated initial values.
         self.gamma = RGfunction(self.global_properties, gamma0, symmetry=symmetry)
@@ -999,108 +1017,120 @@ class Kondo:
         if self.include_Ga:
             # Create Ga:
             if self.global_properties.symmetric:
-                self.ga_scalar = RGfunction(self.global_properties, np.zeros_like(j0), symmetry=-symmetry)
+                self.ga_scalar = RGfunction(
+                    self.global_properties, np.zeros_like(j0), symmetry=-symmetry
+                )
             else:
                 self.ga = ReservoirMatrix(self.global_properties, symmetry=0)
-                self.ga[0,0] = RGfunction(self.global_properties, np.zeros_like(j0), symmetry=-symmetry)
-                self.ga[1,1] = RGfunction(self.global_properties, np.zeros_like(j0), symmetry=-symmetry)
-                self.ga[0,1] = RGfunction(self.global_properties, np.zeros_like(j0), symmetry=0)
-                self.ga[1,0] = RGfunction(self.global_properties, np.zeros_like(j0), symmetry=0)
+                self.ga[0, 0] = RGfunction(
+                    self.global_properties, np.zeros_like(j0), symmetry=-symmetry
+                )
+                self.ga[1, 1] = RGfunction(
+                    self.global_properties, np.zeros_like(j0), symmetry=-symmetry
+                )
+                self.ga[0, 1] = RGfunction(
+                    self.global_properties, np.zeros_like(j0), symmetry=0
+                )
+                self.ga[1, 0] = RGfunction(
+                    self.global_properties, np.zeros_like(j0), symmetry=0
+                )
 
         # Create G2 from J:    G2_{ij} = - 2 sqrt(x_i x_j) J
         self.g2 = ReservoirMatrix(self.global_properties, symmetry=symmetry)
         j_rgfunction = RGfunction(self.global_properties, j0, symmetry=symmetry)
-        self.g2[0,0] = -2*self.xL * j_rgfunction
-        self.g2[1,1] = -2*(1-self.xL) * j_rgfunction
+        self.g2[0, 0] = -2 * self.xL * j_rgfunction
+        self.g2[1, 1] = -2 * (1 - self.xL) * j_rgfunction
         j_rgfunction.symmetry = 0
-        self.g2[0,1] = -2*sqrtxx * j_rgfunction
-        self.g2[1,0] = -2*sqrtxx * j_rgfunction
-
+        self.g2[0, 1] = -2 * sqrtxx * j_rgfunction
+        self.g2[1, 0] = -2 * sqrtxx * j_rgfunction
 
         ## Initial conditions for G3
         # G3 ~ Jtilde^2  with  Jtilde = Z J
         # Every entry of G3 will be of the following form (up to prefactors):
         self.g3 = ReservoirMatrix(self.global_properties, symmetry=-symmetry)
         g3_entry = RGfunction(
-                self.global_properties,
-                1j*np.pi * zj0_square,
-                symmetry=-symmetry)
-        self.g3[0,0] = 2*self.xL * g3_entry
-        self.g3[1,1] = 2*(1-self.xL) * g3_entry
+            self.global_properties, 1j * np.pi * zj0_square, symmetry=-symmetry
+        )
+        self.g3[0, 0] = 2 * self.xL * g3_entry
+        self.g3[1, 1] = 2 * (1 - self.xL) * g3_entry
         g3_entry.symmetry = 0
-        self.g3[0,1] = 2*sqrtxx * g3_entry
-        self.g3[1,0] = 2*sqrtxx * g3_entry
-
+        self.g3[0, 1] = 2 * sqrtxx * g3_entry
+        self.g3[1, 0] = 2 * sqrtxx * g3_entry
 
         ## Initial conditions for current I^{γ=L} = J0 (1 - Jtilde)
         # Note that j0[self.voltage_branches] and z0[self.voltage_branches] are diagonal Floquet matrices.
         if self.truncation_order >= 3:
-            current_entry = 2*sqrtxx * j0[self.voltage_branches] * ( \
-                    np.identity(2*self.nmax+1, dtype=np.complex128) \
-                    - j0[self.voltage_branches] * z0[self.voltage_branches] )
+            current_entry = (
+                2
+                * sqrtxx
+                * j0[self.voltage_branches]
+                * (
+                    np.identity(2 * self.nmax + 1, dtype=np.complex128)
+                    - j0[self.voltage_branches] * z0[self.voltage_branches]
+                )
+            )
         else:
-            current_entry = 2*sqrtxx * j0[self.voltage_branches]
+            current_entry = 2 * sqrtxx * j0[self.voltage_branches]
         self.current = ReservoirMatrix(self.global_properties, symmetry=-symmetry)
-        self.current[0,0] = RGfunction(
-                self.global_properties,
-                np.zeros_like(current_entry),
-                symmetry=-symmetry)
-        self.current[1,1] = RGfunction(
-                self.global_properties,
-                np.zeros_like(current_entry),
-                symmetry=-symmetry)
-        self.current[0,1] = RGfunction(
-                self.global_properties,
-                current_entry,
-                symmetry=0)
-        self.current[1,0] = RGfunction(
-                self.global_properties,
-                -current_entry,
-                symmetry=0)
+        self.current[0, 0] = RGfunction(
+            self.global_properties, np.zeros_like(current_entry), symmetry=-symmetry
+        )
+        self.current[1, 1] = RGfunction(
+            self.global_properties, np.zeros_like(current_entry), symmetry=-symmetry
+        )
+        self.current[0, 1] = RGfunction(
+            self.global_properties, current_entry, symmetry=0
+        )
+        self.current[1, 0] = RGfunction(
+            self.global_properties, -current_entry, symmetry=0
+        )
 
         ## Initial conditions for voltage-variation of Γ: δΓ
         self.deltaGamma = RGfunction(
-                self.global_properties,
-                np.zeros((3,2*self.nmax+1,2*self.nmax+1), dtype=np.complex128),
-                symmetry = symmetry
-                )
+            self.global_properties,
+            np.zeros((3, 2 * self.nmax + 1, 2 * self.nmax + 1), dtype=np.complex128),
+            symmetry=symmetry,
+        )
 
         ## Initial conditions for voltage-variation of current-Γ: δΓ_L
         # Note that zj0_square[self.voltage_branches] is a diagonal Floquet matrix.
         self.deltaGammaL = RGfunction(
-                self.global_properties,
-                3*np.pi*self.xL*(1-self.xL) * zj0_square[self.voltage_branches],
-                symmetry = symmetry
-                )
-
+            self.global_properties,
+            3 * np.pi * self.xL * (1 - self.xL) * zj0_square[self.voltage_branches],
+            symmetry=symmetry,
+        )
 
         ### Derivative of full current
         self.yL = RGfunction(
-                self.global_properties,
-                np.zeros((2*self.nmax+1,2*self.nmax+1), dtype=np.complex128),
-                symmetry = -symmetry
-                )
+            self.global_properties,
+            np.zeros((2 * self.nmax + 1, 2 * self.nmax + 1), dtype=np.complex128),
+            symmetry=-symmetry,
+        )
         mu_matrix = self.mu.reduced(shift=1)
         if self.improved_initial_conditions:
             gamma = gamma0[self.voltage_branches].diagonal()
             j = j0[self.voltage_branches].diagonal()
             z = z0[self.voltage_branches].diagonal()
-            ddGammaL = 12j*np.pi*self.xL*(1-self.xL) * j**3/(self.d+gamma)
+            ddGammaL = 12j * np.pi * self.xL * (1 - self.xL) * j**3 / (self.d + gamma)
             if self.truncation_order >= 3:
-                ddGammaL *= z**2*(1-z*j)
-            self.yL = RGfunction(self.global_properties, mu_matrix.values * ddGammaL.reshape((1,-1)), symmetry=-symmetry)
+                ddGammaL *= z**2 * (1 - z * j)
+            self.yL = RGfunction(
+                self.global_properties,
+                mu_matrix.values * ddGammaL.reshape((1, -1)),
+                symmetry=-symmetry,
+            )
 
         ### Full current, also includes AC current
         self.gammaL = mu_matrix @ self.deltaGammaL
         if self.simplified_initial_conditions:
             self.gammaL *= 0
 
-        self.global_properties.energy = 1j*self.d
+        self.global_properties.energy = 1j * self.d
 
-
-    def initialize_Utransformed(self,
-            **solveopts,
-            ):
+    def initialize_Utransformed(
+        self,
+        **solveopts,
+    ):
         """
         Initialize objects appearing in the RG equations.
 
@@ -1124,17 +1154,17 @@ class Kondo:
         :meth:`~initialize`, :meth:`~initialize_untransformed`
         """
 
-        sqrtxx = np.sqrt(self.xL*(1-self.xL))
+        sqrtxx = np.sqrt(self.xL * (1 - self.xL))
         symmetry = 0 if settings.IGNORE_SYMMETRIES else 1
-
 
         #### Initial conditions from exact results at T=V=0
         # Get Γ, Z and J (G2) for T=V=0.
         gamma0, z0, j0 = solveTV0_Utransformed(
-                d = self.d,
-                properties = self.global_properties,
-                truncation_order = self.truncation_order,
-                **solveopts)
+            d=self.d,
+            properties=self.global_properties,
+            truncation_order=self.truncation_order,
+            **solveopts,
+        )
 
         # Write T=V=0 results to Floquet index n=0.
         gammavalues = np.zeros(self.shape(), dtype=np.complex128)
@@ -1142,11 +1172,17 @@ class Kondo:
         jvalues = np.zeros(self.shape(), dtype=np.complex128)
 
         # construct diagonal matrices
-        diag_idx = (..., *np.diag_indices(2*self.nmax+1))
+        diag_idx = (..., *np.diag_indices(2 * self.nmax + 1))
         if self.resonant_dc_shift:
-            gammavalues[diag_idx] = gamma0[...,self.resonant_dc_shift:-self.resonant_dc_shift]
-            zvalues[diag_idx] = z0[...,self.resonant_dc_shift:-self.resonant_dc_shift]
-            jvalues[diag_idx] = j0[...,self.resonant_dc_shift:-self.resonant_dc_shift]
+            gammavalues[diag_idx] = gamma0[
+                ..., self.resonant_dc_shift : -self.resonant_dc_shift
+            ]
+            zvalues[diag_idx] = z0[
+                ..., self.resonant_dc_shift : -self.resonant_dc_shift
+            ]
+            jvalues[diag_idx] = j0[
+                ..., self.resonant_dc_shift : -self.resonant_dc_shift
+            ]
         else:
             gammavalues[diag_idx] = gamma0
             zvalues[diag_idx] = z0
@@ -1164,12 +1200,26 @@ class Kondo:
 
         # Create Γ and Z with the just calculated initial values.
         if self.compact:
-            self.gamma = SymRGfunction(self.global_properties, gammavalues, symmetry=symmetry, diag=True, offdiag=False)
+            self.gamma = SymRGfunction(
+                self.global_properties,
+                gammavalues,
+                symmetry=symmetry,
+                diag=True,
+                offdiag=False,
+            )
             self.gamma.check_symmetry()
-            self.z = SymRGfunction(self.global_properties, zvalues, symmetry=symmetry, diag=True, offdiag=False)
+            self.z = SymRGfunction(
+                self.global_properties,
+                zvalues,
+                symmetry=symmetry,
+                diag=True,
+                offdiag=False,
+            )
             self.z.check_symmetry()
         else:
-            self.gamma = RGfunction(self.global_properties, gammavalues, symmetry=symmetry)
+            self.gamma = RGfunction(
+                self.global_properties, gammavalues, symmetry=symmetry
+            )
             self.gamma.check_symmetry()
             self.z = RGfunction(self.global_properties, zvalues, symmetry=symmetry)
             self.z.check_symmetry()
@@ -1179,162 +1229,208 @@ class Kondo:
             if self.global_properties.symmetric:
                 settings.logger.debug("Creating Ga scalar")
                 if self.compact:
-                    self.ga_scalar = SymRGfunction(self.global_properties, np.zeros_like(jvalues), symmetry=-symmetry, diag=True, offdiag=False)
+                    self.ga_scalar = SymRGfunction(
+                        self.global_properties,
+                        np.zeros_like(jvalues),
+                        symmetry=-symmetry,
+                        diag=True,
+                        offdiag=False,
+                    )
                 else:
-                    self.ga_scalar = RGfunction(self.global_properties, np.zeros_like(jvalues), symmetry=-symmetry)
+                    self.ga_scalar = RGfunction(
+                        self.global_properties,
+                        np.zeros_like(jvalues),
+                        symmetry=-symmetry,
+                    )
             else:
                 settings.logger.debug("Creating Ga matrix")
                 self.ga = ReservoirMatrix(self.global_properties, symmetry=symmetry)
                 # TODO: check whether this works for RGclass with self.compact
-                self.ga[0,0] = RGclass(self.global_properties, np.zeros_like(jvalues), symmetry=-symmetry)
-                self.ga[1,1] = RGclass(self.global_properties, np.zeros_like(jvalues), symmetry=-symmetry)
-                self.ga[0,1] = RGclass(self.global_properties, np.zeros_like(jvalues), symmetry=0)
-                self.ga[1,0] = RGclass(self.global_properties, np.zeros_like(jvalues), symmetry=0)
+                self.ga[0, 0] = RGclass(
+                    self.global_properties, np.zeros_like(jvalues), symmetry=-symmetry
+                )
+                self.ga[1, 1] = RGclass(
+                    self.global_properties, np.zeros_like(jvalues), symmetry=-symmetry
+                )
+                self.ga[0, 1] = RGclass(
+                    self.global_properties, np.zeros_like(jvalues), symmetry=0
+                )
+                self.ga[1, 0] = RGclass(
+                    self.global_properties, np.zeros_like(jvalues), symmetry=0
+                )
 
         # Create G2 from J:    G2_{ij} = - 2 sqrt(x_i x_j) J
         self.g2 = ReservoirMatrix(self.global_properties, symmetry=symmetry)
         j_rgfunction = RGclass(self.global_properties, jvalues, symmetry=symmetry)
-        self.g2[0,0] = -2*self.xL * j_rgfunction
-        self.g2[1,1] = -2*(1-self.xL) * j_rgfunction
+        self.g2[0, 0] = -2 * self.xL * j_rgfunction
+        self.g2[1, 1] = -2 * (1 - self.xL) * j_rgfunction
         if self.vac or self.resonant_dc_shift or self.fourier_coef is not None:
             # Coefficients are given by the Bessel function of the first kind.
             if self.fourier_coef is not None:
                 init_matrix = gen_init_matrix(
-                        self.nmax,
-                        *(f/self.omega for f in self.fourier_coef),
-                        resonant_dc_shift = self.resonant_dc_shift)
+                    self.nmax,
+                    *(f / self.omega for f in self.fourier_coef),
+                    resonant_dc_shift=self.resonant_dc_shift,
+                )
             else:
                 init_matrix = gen_init_matrix(
-                        self.nmax,
-                        self.vac/(2*self.omega),
-                        resonant_dc_shift = self.resonant_dc_shift)
+                    self.nmax,
+                    self.vac / (2 * self.omega),
+                    resonant_dc_shift=self.resonant_dc_shift,
+                )
             j_LR = np.einsum(
-                    'ij,...j->...ij',
-                    init_matrix,
-                    j0[...,2*self.resonant_dc_shift:])
+                "ij,...j->...ij", init_matrix, j0[..., 2 * self.resonant_dc_shift :]
+            )
             j_RL = np.einsum(
-                    'ji,...j->...ij',
-                    init_matrix.conjugate(),
-                    j0[...,:j0.shape[-1]-2*self.resonant_dc_shift])
+                "ji,...j->...ij",
+                init_matrix.conjugate(),
+                j0[..., : j0.shape[-1] - 2 * self.resonant_dc_shift],
+            )
             j_LR = RGfunction(self.global_properties, j_LR)
             j_RL = RGfunction(self.global_properties, j_RL)
-            self.g2[0,1] = -2*sqrtxx * j_LR
-            self.g2[1,0] = -2*sqrtxx * j_RL
+            self.g2[0, 1] = -2 * sqrtxx * j_LR
+            self.g2[1, 0] = -2 * sqrtxx * j_RL
         else:
             assert self.compact == 0
             j_rgfunction.symmetry = 0
-            self.g2[0,1] = -2*sqrtxx * j_rgfunction
-            self.g2[1,0] = -2*sqrtxx * j_rgfunction
-
+            self.g2[0, 1] = -2 * sqrtxx * j_rgfunction
+            self.g2[1, 0] = -2 * sqrtxx * j_rgfunction
 
         ## Initial conditions for G3
         # G3 ~ Jtilde^2  with  Jtilde = Z J
         # Every entry of G3 will be of the following form (up to prefactors):
         self.g3 = ReservoirMatrix(self.global_properties, symmetry=-symmetry)
         g3_entry = np.zeros(self.shape(), dtype=np.complex128)
-        g3_entry[diag_idx] = 1j*np.pi * zjvalues[diag_idx]**2
+        g3_entry[diag_idx] = 1j * np.pi * zjvalues[diag_idx] ** 2
         g3_entry = RGclass(self.global_properties, g3_entry, symmetry=-symmetry)
-        self.g3[0,0] = 2*self.xL * g3_entry
-        self.g3[1,1] = 2*(1-self.xL) * g3_entry
+        self.g3[0, 0] = 2 * self.xL * g3_entry
+        self.g3[1, 1] = 2 * (1 - self.xL) * g3_entry
         if self.vac or self.resonant_dc_shift or self.fourier_coef is not None:
-            g30 = 1j*np.pi*zj0**2
+            g30 = 1j * np.pi * zj0**2
             g3_LR = np.einsum(
-                    'ij,...j->...ij',
-                    init_matrix,
-                    g30[...,2*self.resonant_dc_shift:])
+                "ij,...j->...ij", init_matrix, g30[..., 2 * self.resonant_dc_shift :]
+            )
             g3_RL = np.einsum(
-                    'ji,...j->...ij',
-                    init_matrix.conjugate(),
-                    g30[...,:g30.shape[-1]-2*self.resonant_dc_shift])
+                "ji,...j->...ij",
+                init_matrix.conjugate(),
+                g30[..., : g30.shape[-1] - 2 * self.resonant_dc_shift],
+            )
             g3_LR = RGfunction(self.global_properties, g3_LR)
             g3_RL = RGfunction(self.global_properties, g3_RL)
-            self.g3[0,1] = 2*sqrtxx * g3_LR
-            self.g3[1,0] = 2*sqrtxx * g3_RL
+            self.g3[0, 1] = 2 * sqrtxx * g3_LR
+            self.g3[1, 0] = 2 * sqrtxx * g3_RL
         else:
             assert self.compact == 0
             g3_entry.symmetry = 0
-            self.g3[0,1] = 2*sqrtxx * g3_entry
-            self.g3[1,0] = 2*sqrtxx * g3_entry
-
+            self.g3[0, 1] = 2 * sqrtxx * g3_entry
+            self.g3[1, 0] = 2 * sqrtxx * g3_entry
 
         ## Initial conditions for current I^{γ=L} = J0 (1 - Jtilde)
         if self.voltage_branches:
             if self.truncation_order >= 3:
-                current_entry = np.diag( \
-                        2*sqrtxx * jvalues[self.voltage_branches][diag_idx] \
-                        * (1 - zjvalues[self.voltage_branches][diag_idx] ) )
+                current_entry = np.diag(
+                    2
+                    * sqrtxx
+                    * jvalues[self.voltage_branches][diag_idx]
+                    * (1 - zjvalues[self.voltage_branches][diag_idx])
+                )
             else:
-                current_entry = np.diag(2*sqrtxx * jvalues[self.voltage_branches][diag_idx])
+                current_entry = np.diag(
+                    2 * sqrtxx * jvalues[self.voltage_branches][diag_idx]
+                )
         else:
             if self.truncation_order >= 3:
-                current_entry = np.diag(2*sqrtxx * jvalues[diag_idx] * (1 - zjvalues[diag_idx]))
+                current_entry = np.diag(
+                    2 * sqrtxx * jvalues[diag_idx] * (1 - zjvalues[diag_idx])
+                )
             else:
-                current_entry = np.diag(2*sqrtxx * jvalues[diag_idx])
-        current_entry = RGclass(self.global_properties, current_entry, symmetry=-symmetry)
+                current_entry = np.diag(2 * sqrtxx * jvalues[diag_idx])
+        current_entry = RGclass(
+            self.global_properties, current_entry, symmetry=-symmetry
+        )
         self.current = ReservoirMatrix(self.global_properties, symmetry=-symmetry)
         if self.compact:
-            self.current[0,0] = RGclass(self.global_properties, None, symmetry=symmetry)
-            self.current[0,0].submatrix01 = np.zeros((self.nmax+1, self.nmax), np.complex128)
-            self.current[0,0].submatrix10 = np.zeros((self.nmax, self.nmax+1), np.complex128)
+            self.current[0, 0] = RGclass(
+                self.global_properties, None, symmetry=symmetry
+            )
+            self.current[0, 0].submatrix01 = np.zeros(
+                (self.nmax + 1, self.nmax), np.complex128
+            )
+            self.current[0, 0].submatrix10 = np.zeros(
+                (self.nmax, self.nmax + 1), np.complex128
+            )
         else:
-            self.current[0,0] = 0*current_entry
-        self.current[0,0].symmetry = -symmetry
-        self.current[1,1] = self.current[0,0].copy()
+            self.current[0, 0] = 0 * current_entry
+        self.current[0, 0].symmetry = -symmetry
+        self.current[1, 1] = self.current[0, 0].copy()
         if self.vac or self.resonant_dc_shift or self.fourier_coef is not None:
             if self.truncation_order >= 3:
                 i0 = j0_red * (1 - zj0_red)
             else:
                 i0 = j0_red
             i_LR = np.einsum(
-                    'ij,...j->...ij',
-                    init_matrix,
-                    i0[2*self.resonant_dc_shift:])
+                "ij,...j->...ij", init_matrix, i0[2 * self.resonant_dc_shift :]
+            )
             i_RL = np.einsum(
-                    'ji,...j->...ij',
-                    init_matrix.conjugate(),
-                    i0[:i0.size-2*self.resonant_dc_shift])
+                "ji,...j->...ij",
+                init_matrix.conjugate(),
+                i0[: i0.size - 2 * self.resonant_dc_shift],
+            )
             i_LR = RGfunction(self.global_properties, i_LR)
             i_RL = RGfunction(self.global_properties, i_RL)
-            self.current[0,1] =  2*sqrtxx * i_LR
-            self.current[1,0] = -2*sqrtxx * i_RL
+            self.current[0, 1] = 2 * sqrtxx * i_LR
+            self.current[1, 0] = -2 * sqrtxx * i_RL
         else:
             assert self.compact == 0
             current_entry.symmetry = 0
-            self.current[0,1] =  current_entry
-            self.current[1,0] = -current_entry
+            self.current[0, 1] = current_entry
+            self.current[1, 0] = -current_entry
 
         ## Initial conditions for voltage-variation of Γ: δΓ
         if self.compact:
             self.deltaGamma = SymRGfunction(
-                    self.global_properties,
-                    np.zeros(
-                        (3,2*self.nmax+1,2*self.nmax+1) if self.voltage_branches else self.shape(),
-                        dtype=np.complex128),
-                    symmetry = symmetry,
-                    diag = False,
-                    offdiag = True,
-                    )
+                self.global_properties,
+                np.zeros(
+                    (3, 2 * self.nmax + 1, 2 * self.nmax + 1)
+                    if self.voltage_branches
+                    else self.shape(),
+                    dtype=np.complex128,
+                ),
+                symmetry=symmetry,
+                diag=False,
+                offdiag=True,
+            )
         else:
             self.deltaGamma = RGfunction(
-                    self.global_properties,
-                    np.zeros(
-                        (3,2*self.nmax+1,2*self.nmax+1) if self.voltage_branches else self.shape(),
-                        dtype=np.complex128),
-                    symmetry = symmetry
-                    )
+                self.global_properties,
+                np.zeros(
+                    (3, 2 * self.nmax + 1, 2 * self.nmax + 1)
+                    if self.voltage_branches
+                    else self.shape(),
+                    dtype=np.complex128,
+                ),
+                symmetry=symmetry,
+            )
 
         ## Initial conditions for voltage-variation of current-Γ: δΓ_L
         self.deltaGammaL = RGclass(
-                self.global_properties,
-                None if self.compact else np.zeros((2*self.nmax+1, 2*self.nmax+1), dtype=np.complex128),
-                symmetry = symmetry
-                )
+            self.global_properties,
+            None
+            if self.compact
+            else np.zeros((2 * self.nmax + 1, 2 * self.nmax + 1), dtype=np.complex128),
+            symmetry=symmetry,
+        )
         if self.resonant_dc_shift:
             assert self.compact == 0
-            self.deltaGammaL.values[diag_idx] = 3*np.pi*self.xL*(1-self.xL) \
-                    * zj0_red[self.resonant_dc_shift:-self.resonant_dc_shift]**2
+            self.deltaGammaL.values[diag_idx] = (
+                3
+                * np.pi
+                * self.xL
+                * (1 - self.xL)
+                * zj0_red[self.resonant_dc_shift : -self.resonant_dc_shift] ** 2
+            )
         else:
-            diag_values = 3*np.pi*self.xL*(1-self.xL) * zj0_red**2
+            diag_values = 3 * np.pi * self.xL * (1 - self.xL) * zj0_red**2
             if self.compact:
                 assert diag_values.dtype == np.complex128
                 self.deltaGammaL.submatrix00 = np.diag(diag_values[0::2])
@@ -1343,75 +1439,133 @@ class Kondo:
                 self.deltaGammaL.values[diag_idx] = diag_values
             del diag_values
 
-
         ### Derivative of full current
         if self.compact:
             self.yL = SymRGfunction(
-                    self.global_properties,
-                    np.zeros((2*self.nmax+1,2*self.nmax+1), dtype=np.complex128),
-                    symmetry=-symmetry,
-                    diag=False,
-                    offdiag=True,
-                    )
+                self.global_properties,
+                np.zeros((2 * self.nmax + 1, 2 * self.nmax + 1), dtype=np.complex128),
+                symmetry=-symmetry,
+                diag=False,
+                offdiag=True,
+            )
         else:
             self.yL = RGfunction(
-                    self.global_properties,
-                    np.zeros((2*self.nmax+1,2*self.nmax+1), dtype=np.complex128),
-                    symmetry=-symmetry
-                    )
+                self.global_properties,
+                np.zeros((2 * self.nmax + 1, 2 * self.nmax + 1), dtype=np.complex128),
+                symmetry=-symmetry,
+            )
 
         ### Full current, also includes AC current
         if self.resonant_dc_shift == 0:
             # TODO: implement this with resonant shift
-            mu = np.zeros((2*self.nmax+1, 2*self.nmax+1), dtype=np.complex128)
-            mu[np.diag_indices(2*self.nmax+1)] = self.vdc
+            mu = np.zeros((2 * self.nmax + 1, 2 * self.nmax + 1), dtype=np.complex128)
+            mu[np.diag_indices(2 * self.nmax + 1)] = self.vdc
             if self.fourier_coef is None:
-                mu[np.arange(2*self.nmax), np.arange(1, 2*self.nmax+1)] = self.vac/2
-                mu[np.arange(1, 2*self.nmax+1), np.arange(2*self.nmax)] = self.vac/2
+                mu[np.arange(2 * self.nmax), np.arange(1, 2 * self.nmax + 1)] = (
+                    self.vac / 2
+                )
+                mu[np.arange(1, 2 * self.nmax + 1), np.arange(2 * self.nmax)] = (
+                    self.vac / 2
+                )
             else:
                 for i, f in enumerate(self.fourier_coef, 1):
-                    mu[np.arange(2*self.nmax+1-i), np.arange(i, 2*self.nmax+1)] = f
-                    mu[np.arange(i, 2*self.nmax+1), np.arange(2*self.nmax+1-i)] = f.conjugate()
+                    mu[
+                        np.arange(2 * self.nmax + 1 - i),
+                        np.arange(i, 2 * self.nmax + 1),
+                    ] = f
+                    mu[
+                        np.arange(i, 2 * self.nmax + 1),
+                        np.arange(2 * self.nmax + 1 - i),
+                    ] = f.conjugate()
             mu = RGclass(self.global_properties, mu, symmetry=1)
             self.gammaL = mu @ self.deltaGammaL.reduced()
             if self.improved_initial_conditions:
-                ddGammaL = 12j*np.pi*self.xL*(1-self.xL) * j0_red**3/(self.d+gamma0_red)
+                ddGammaL = (
+                    12j
+                    * np.pi
+                    * self.xL
+                    * (1 - self.xL)
+                    * j0_red**3
+                    / (self.d + gamma0_red)
+                )
                 if self.truncation_order >= 3:
-                    ddGammaL *= z0_red**2*(1-z0_red*j0_red)
+                    ddGammaL *= z0_red**2 * (1 - z0_red * j0_red)
                 if self.compact:
-                    self.yL = SymRGfunction(self.global_properties, mu.values * ddGammaL.reshape((1,-1)), symmetry=-symmetry, diag=False, offdiag=True)
+                    self.yL = SymRGfunction(
+                        self.global_properties,
+                        mu.values * ddGammaL.reshape((1, -1)),
+                        symmetry=-symmetry,
+                        diag=False,
+                        offdiag=True,
+                    )
                 else:
-                    self.yL = RGfunction(self.global_properties, mu.values * ddGammaL.reshape((1,-1)), symmetry=-symmetry)
+                    self.yL = RGfunction(
+                        self.global_properties,
+                        mu.values * ddGammaL.reshape((1, -1)),
+                        symmetry=-symmetry,
+                    )
         else:
             self.gammaL = self.vdc * self.deltaGammaL.reduced()
             if self.improved_initial_conditions and self.vdc:
                 if self.truncation_order >= 3:
-                    self.yL.values += np.diag(self.vdc * 12j*np.pi*self.xL*(1-self.xL) * j0_red**3*z0_red**2*(1-z0_red*j0_red)/(self.d+gamma0_red))
+                    self.yL.values += np.diag(
+                        self.vdc
+                        * 12j
+                        * np.pi
+                        * self.xL
+                        * (1 - self.xL)
+                        * j0_red**3
+                        * z0_red**2
+                        * (1 - z0_red * j0_red)
+                        / (self.d + gamma0_red)
+                    )
                 else:
-                    self.yL.values += np.diag(self.vdc * 12j*np.pi*self.xL*(1-self.xL) * j0_red**3/(self.d+gamma0_red))
+                    self.yL.values += np.diag(
+                        self.vdc
+                        * 12j
+                        * np.pi
+                        * self.xL
+                        * (1 - self.xL)
+                        * j0_red**3
+                        / (self.d + gamma0_red)
+                    )
             if self.vac and self.fourier_coef is None:
-                gammaL_AC = 3*np.pi*self.xL*(1-self.xL) * self.vac/2 * zj0_red**2
+                gammaL_AC = (
+                    3 * np.pi * self.xL * (1 - self.xL) * self.vac / 2 * zj0_red**2
+                )
                 if self.resonant_dc_shift:
-                    gammaL_AC = gammaL_AC[...,self.resonant_dc_shift:-self.resonant_dc_shift]
-                idx = (np.arange(1, 2*self.nmax+1), np.arange(2*self.nmax))
-                self.gammaL.values[idx] = gammaL_AC[...,1:]
-                idx = (np.arange(0, 2*self.nmax), np.arange(1, 2*self.nmax+1))
-                self.gammaL.values[idx] = gammaL_AC[...,:-1]
+                    gammaL_AC = gammaL_AC[
+                        ..., self.resonant_dc_shift : -self.resonant_dc_shift
+                    ]
+                idx = (np.arange(1, 2 * self.nmax + 1), np.arange(2 * self.nmax))
+                self.gammaL.values[idx] = gammaL_AC[..., 1:]
+                idx = (np.arange(0, 2 * self.nmax), np.arange(1, 2 * self.nmax + 1))
+                self.gammaL.values[idx] = gammaL_AC[..., :-1]
                 if self.improved_initial_conditions:
-                    yL_AC = 12j*np.pi*self.xL*(1-self.xL) * self.vac/2 * j0_red**3/(self.d+gamma0_red)
+                    yL_AC = (
+                        12j
+                        * np.pi
+                        * self.xL
+                        * (1 - self.xL)
+                        * self.vac
+                        / 2
+                        * j0_red**3
+                        / (self.d + gamma0_red)
+                    )
                     if self.truncation_order >= 3:
-                        yL_AC *= z0_red**2*(1-z0_red*j0_red)
+                        yL_AC *= z0_red**2 * (1 - z0_red * j0_red)
                     if self.resonant_dc_shift:
-                        yL_AC = yL_AC[...,self.resonant_dc_shift:-self.resonant_dc_shift]
-                    idx = (np.arange(1, 2*self.nmax+1), np.arange(2*self.nmax))
-                    self.yL.values[idx] = yL_AC[...,1:]
-                    idx = (np.arange(0, 2*self.nmax), np.arange(1, 2*self.nmax+1))
-                    self.yL.values[idx] = yL_AC[...,:-1]
+                        yL_AC = yL_AC[
+                            ..., self.resonant_dc_shift : -self.resonant_dc_shift
+                        ]
+                    idx = (np.arange(1, 2 * self.nmax + 1), np.arange(2 * self.nmax))
+                    self.yL.values[idx] = yL_AC[..., 1:]
+                    idx = (np.arange(0, 2 * self.nmax), np.arange(1, 2 * self.nmax + 1))
+                    self.yL.values[idx] = yL_AC[..., :-1]
         if self.simplified_initial_conditions:
             self.gammaL *= 0
 
-        self.global_properties.energy = 1j*self.d
-
+        self.global_properties.energy = 1j * self.d
 
     def initialize(self, **solveopts):
         """
@@ -1488,14 +1642,14 @@ class Kondo:
         else:
             self.initialize_untransformed(**solveopts)
 
-
-    def run(self,
-            ir_cutoff = 0,
-            forget_flow  = True,
-            save_filename : 'save intermediate results: string containing %d for number of iterations' = '',
-            save_iterations : 'number of iterations after which intermediate result should be saved' = 0,
-            **solveopts : 'keyword arguments passed to solver',
-            ):
+    def run(
+        self,
+        ir_cutoff=0,
+        forget_flow=True,
+        save_filename: "save intermediate results: string containing %d for number of iterations" = "",
+        save_iterations: "number of iterations after which intermediate result should be saved" = 0,
+        **solveopts: "keyword arguments passed to solver",
+    ):
         """
         Initialize and solve the RG equations.
 
@@ -1554,14 +1708,13 @@ class Kondo:
         # Write final values to Floquet matrices in self.
         try:
             # Shift energy
-            self.global_properties.energy = self.energy.real + 1j*output.t[-1]
+            self.global_properties.energy = self.energy.real + 1j * output.t[-1]
             # Unpack values
-            self.unpackFlattenedValues(output.y[:,-1])
+            self.unpackFlattenedValues(output.y[:, -1])
         except:
             settings.logger.exception("Failed to read solver results:")
 
         return output
-
 
     def updateRGequations(self):
         """
@@ -1587,7 +1740,7 @@ class Kondo:
         :meth:`~updateRGequations_reference`
         """
         if settings.ENFORCE_SYMMETRIC:
-            if hasattr(self, 'pi'):
+            if hasattr(self, "pi"):
                 assert self.pi.symmetry == -1
             assert self.z.symmetry == 1
             assert self.yL.symmetry == -1
@@ -1595,26 +1748,27 @@ class Kondo:
             assert self.gammaL.symmetry == 1
             assert self.deltaGamma.symmetry == 1
             assert self.deltaGammaL.symmetry == 1
-            assert self.g2[0,0].symmetry == 1
-            assert self.g2[1,1].symmetry == 1
-            assert self.g3[0,0].symmetry == -1
-            assert self.g3[1,1].symmetry == -1
-            assert self.current[0,0].symmetry == -1
-            assert self.current[1,1].symmetry == -1
+            assert self.g2[0, 0].symmetry == 1
+            assert self.g2[1, 1].symmetry == 1
+            assert self.g3[0, 0].symmetry == -1
+            assert self.g3[1, 1].symmetry == -1
+            assert self.current[0, 0].symmetry == -1
+            assert self.current[1, 1].symmetry == -1
             if self.include_Ga:
                 try:
                     assert self.ga_scalar.symmetry == -1
                 except AttributeError:
-                    assert self.ga[0,0].symmetry == -1
-                    assert self.ga[1,1].symmetry == -1
+                    assert self.ga[0, 0].symmetry == -1
+                    assert self.ga[1, 1].symmetry == -1
 
         # Print some log message to indicate progress
         global LAST_LOG_TIME, REF_TIME
         if settings.LOG_TIME > 0 and time() - LAST_LOG_TIME >= settings.LOG_TIME:
             LAST_LOG_TIME = time()
             settings.logger.info(
-                    "%9.2fs:  Λ = %.4e,  iterations = %d"%(
-                        process_time(), self.energy.imag, self.total_iterations))
+                "%9.2fs:  Λ = %.4e,  iterations = %d"
+                % (process_time(), self.energy.imag, self.total_iterations)
+            )
 
         if settings.USE_REFERENCE_IMPLEMENTATION:
             return self.updateRGequations_reference()
@@ -1630,19 +1784,24 @@ class Kondo:
         # 178 / 116 / 67
 
         ## RG eq for Γ
-        zinv = self.z.inverse() # costs: 1 inversion
-        self.gammaE = -1j*( zinv - (SymRGfunction if self.compact else RGfunction)(self.global_properties, 'identity') )
+        zinv = self.z.inverse()  # costs: 1 inversion
+        self.gammaE = -1j * (
+            zinv
+            - (SymRGfunction if self.compact else RGfunction)(
+                self.global_properties, "identity"
+            )
+        )
         del zinv
 
         # Derivative of G2
         # First calculate Π (at E and shifted by multiples of vdc or mu):
-        self.pi = (-1j*self.gamma).k2lambda(self.mu) # costs: 1 inversion
+        self.pi = (-1j * self.gamma).k2lambda(self.mu)  # costs: 1 inversion
 
         # first terms of g2E:
         # 1/2  G13  Π  G32 ,
         # 1/2  G32  Π  G13
-        g2_pi = self.g2 @ self.pi # costs: 4/3/2
-        g2E1, g2E2 = product_combinations( g2_pi, self.g2 ) # costs: 12/7/4
+        g2_pi = self.g2 @ self.pi  # costs: 4/3/2
+        g2E1, g2E2 = product_combinations(g2_pi, self.g2)  # costs: 12/7/4
         # g2E1.tr() = -i (d/dE)² Γ
         g2E1tr = g2E1.tr()
         g2E1tr.symmetry = -symmetry
@@ -1650,13 +1809,13 @@ class Kondo:
             g2E1tr = SymRGfunction.fromRGfunction(g2E1tr, diag=True, offdiag=False)
         g2E1 *= 0.5
         g2E2 *= 0.5
-        self.zE = self.z @ g2E1tr @ self.z # costs: 2/2/2
+        self.zE = self.z @ g2E1tr @ self.z  # costs: 2/2/2
         del g2E1tr
 
         ## RG eq for Ga
         if self.include_Ga:
             if hasattr(self, "ga_scalar"):
-                self.ga_scalarE = g2E1[0,0] - g2E2[0,0]
+                self.ga_scalarE = g2E1[0, 0] - g2E2[0, 0]
             else:
                 self.gaE = g2E1 - g2E2
 
@@ -1672,42 +1831,52 @@ class Kondo:
                 #             ⎛ ∞     1          1   ⎞
                 # bracket = 2 ⎜ ∫dω ————— Z G² ————— ⎟ Z
                 #             ⎝ 0   ω + χ      ω + χ ⎠
-                pi_g2_z = 2 * frequency_integral.reservoir_matrix_integral(chi, self.z @ self.g2, chi, self.integral_method)
+                pi_g2_z = 2 * frequency_integral.reservoir_matrix_integral(
+                    chi, self.z @ self.g2, chi, self.integral_method
+                )
                 pi_g2_z @= self.z
             else:
-                pi_g2_z = self.pi @ self.g2 @ self.z + self.z @ g2_pi # costs: 12/9/6
+                pi_g2_z = self.pi @ self.g2 @ self.z + self.z @ g2_pi  # costs: 12/9/6
 
-            g2_bracket_g2, g2_bracket_g3 = einsum_34_12_43_double(self.g2, pi_g2_z, self.g2, self.g3) # costs: 48/30/15
+            g2_bracket_g2, g2_bracket_g3 = einsum_34_12_43_double(
+                self.g2, pi_g2_z, self.g2, self.g3
+            )  # costs: 48/30/15
 
             ## RG eq for G2
-            self.g2E += (-0.25)*g2_bracket_g2
+            self.g2E += (-0.25) * g2_bracket_g2
             del g2_bracket_g2
 
             if self.include_Ga:
                 if hasattr(self, "ga_scalar"):
-                    ga_pi2 = 2*self.ga_scalar @ self.pi
-                    ga_pi_g2 = ga_pi2 @ self.g2[0,1] - 2*g2_pi[0,1] @ self.ga_scalar
+                    ga_pi2 = 2 * self.ga_scalar @ self.pi
+                    ga_pi_g2 = ga_pi2 @ self.g2[0, 1] - 2 * g2_pi[0, 1] @ self.ga_scalar
                     ga_pi_g2_conj = ga_pi_g2.floquetConjugate()
                     ga_pi_g2_conj.voltage_shifts = -1
-                    self.g2E[0,1] += ga_pi_g2
-                    self.g2E[1,0] -= ga_pi_g2_conj
+                    self.g2E[0, 1] += ga_pi_g2
+                    self.g2E[1, 0] -= ga_pi_g2_conj
                     del ga_pi_g2, ga_pi_g2_conj
                 else:
                     ga_pi = self.ga @ self.pi
-                    g2_pi_ga_1, g2_pi_ga_2 = product_combinations( g2_pi, self.ga ) # costs: 12/7/4
-                    ga_pi_g2_1, ga_pi_g2_2 = product_combinations( ga_pi, self.g2 ) # costs: 12/7/4
+                    g2_pi_ga_1, g2_pi_ga_2 = product_combinations(
+                        g2_pi, self.ga
+                    )  # costs: 12/7/4
+                    ga_pi_g2_1, ga_pi_g2_2 = product_combinations(
+                        ga_pi, self.g2
+                    )  # costs: 12/7/4
                     self.g2E += g2_pi_ga_1 + ga_pi_g2_1 - g2_pi_ga_2 - ga_pi_g2_2
         self.g2E.symmetry = -symmetry
-        self.g2E[0,0].symmetry = -symmetry
-        self.g2E[1,1].symmetry = -symmetry
-        self.deltaGammaE = 1j * (g2E1[0,0] - g2E1[1,1] + g2E2[1,1] - g2E2[0,0]).reduced_to_voltage_branches(1)
+        self.g2E[0, 0].symmetry = -symmetry
+        self.g2E[1, 1].symmetry = -symmetry
+        self.deltaGammaE = 1j * (
+            g2E1[0, 0] - g2E1[1, 1] + g2E2[1, 1] - g2E2[0, 0]
+        ).reduced_to_voltage_branches(1)
         self.deltaGammaE.symmetry = -symmetry
         del g2E1, g2E2
 
         # first terms of G3E:
         # G2_13  Π  G3_32 ,
         # G2_32  Π  G3_13
-        g3E1, g3E2 = product_combinations( g2_pi, self.g3 ) # costs: 12/7/4
+        g3E1, g3E2 = product_combinations(g2_pi, self.g3)  # costs: 12/7/4
 
         del g2_pi
 
@@ -1720,30 +1889,31 @@ class Kondo:
             del g2_bracket_g3
             if self.include_Ga:
                 if hasattr(self, "ga_scalar"):
-                    ga_pi_g3 = ga_pi2 @ self.g3[0,1]
+                    ga_pi_g3 = ga_pi2 @ self.g3[0, 1]
                     ga_pi_g3_conj = ga_pi_g3.floquetConjugate()
                     ga_pi_g3_conj.voltage_shifts = -1
-                    self.g3E[0,1] += ga_pi_g3
-                    self.g3E[1,0] += ga_pi_g3_conj
+                    self.g3E[0, 1] += ga_pi_g3
+                    self.g3E[1, 0] += ga_pi_g3_conj
                     del ga_pi_g3, ga_pi_g3_conj, ga_pi2
                 else:
-                    ga_pi_g3_1, ga_pi_g3_2 = product_combinations( ga_pi, self.g3 ) # costs: 12/7/4
+                    ga_pi_g3_1, ga_pi_g3_2 = product_combinations(
+                        ga_pi, self.g3
+                    )  # costs: 12/7/4
                     self.g3E += ga_pi_g3_1 - ga_pi_g3_2
         self.g3E.symmetry = symmetry
-        self.g3E[0,0].symmetry = symmetry
-        self.g3E[1,1].symmetry = symmetry
+        self.g3E[0, 0].symmetry = symmetry
+        self.g3E[1, 1].symmetry = symmetry
         del g3E1, g3E2
-
 
         # first terms of iE:
         # I13  Π  G32 ,
         # I32  Π  G13
-        i_pi = self.current @ self.pi # costs: 4/3/2
+        i_pi = self.current @ self.pi  # costs: 4/3/2
         i_pi.symmetry = 0
         if settings.ENFORCE_SYMMETRIC:
-            assert i_pi[0,0].symmetry == 1
-            assert i_pi[1,1].symmetry == 1
-        iE1, iE2 = product_combinations( i_pi, self.g2 ) # costs: 12/7/4
+            assert i_pi[0, 0].symmetry == 1
+            assert i_pi[1, 1].symmetry == 1
+        iE1, iE2 = product_combinations(i_pi, self.g2)  # costs: 12/7/4
 
         self.currentE = iE1 + iE2
         del iE1, iE2
@@ -1751,29 +1921,32 @@ class Kondo:
             # third term for iE
             # 1/2  I34 ( Π  G2_12  Z  +  Z  G2_12  Π ) G43
             # The part in the brackets has been calculated before.
-            self.currentE += 0.5 * einsum_34_12_43( self.current, pi_g2_z, self.g2 ) # costs: 32/20/10
+            self.currentE += 0.5 * einsum_34_12_43(
+                self.current, pi_g2_z, self.g2
+            )  # costs: 32/20/10
             del pi_g2_z
             if self.include_Ga:
                 if hasattr(self, "ga_scalar"):
-                    i_pi_ga = -2*i_pi[0,1] @ self.ga_scalar
+                    i_pi_ga = -2 * i_pi[0, 1] @ self.ga_scalar
                     i_pi_ga_conj = i_pi_ga.floquetConjugate()
                     i_pi_ga_conj.voltage_shifts = -1
-                    self.currentE[0,1] += i_pi_ga
-                    self.currentE[1,0] += i_pi_ga_conj
+                    self.currentE[0, 1] += i_pi_ga
+                    self.currentE[1, 0] += i_pi_ga_conj
                     del i_pi_ga, i_pi_ga_conj
                 else:
-                    il_pi_ga_1, il_pi_ga_2 = product_combinations( i_pi, self.ga ) # costs: 12/7/4
+                    il_pi_ga_1, il_pi_ga_2 = product_combinations(
+                        i_pi, self.ga
+                    )  # costs: 12/7/4
                     self.currentE += il_pi_ga_1 - il_pi_ga_2
         self.currentE.symmetry = symmetry
-        self.currentE[0,0].symmetry = symmetry
-        self.currentE[1,1].symmetry = symmetry
-
+        self.currentE[0, 0].symmetry = symmetry
+        self.currentE[1, 1].symmetry = symmetry
 
         # RG equation for δΓ_L
         # First part:  (δ1L - δ2L)  I_12  Π  G^3_21
-        i_pi_g3_01 = i_pi[0,1] @ self.g3[1,0] # costs: 1
-        i_pi_g3_10 = i_pi[1,0] @ self.g3[0,1] # costs: 1
-        self.deltaGammaLE = 1.5j*(i_pi_g3_01 - i_pi_g3_10)
+        i_pi_g3_01 = i_pi[0, 1] @ self.g3[1, 0]  # costs: 1
+        i_pi_g3_10 = i_pi[1, 0] @ self.g3[0, 1]  # costs: 1
+        self.deltaGammaLE = 1.5j * (i_pi_g3_01 - i_pi_g3_10)
         # Second part:  I_12  Z  Π  δΓ  G^3_21
         if self.truncation_order >= 3:
             z_reduced = self.z.reduced_to_voltage_branches(1)
@@ -1782,59 +1955,99 @@ class Kondo:
             if self.solve_integral_exactly:
                 # TODO: check this!
                 chi_reduced = chi.reduced_to_voltage_branches(1)
-                z_dgamma_pi = 2*frequency_integral.floquet_matrix_integral(chi_reduced, z_reduced @ dGamma_reduced, chi_reduced, self.integral_method) @ z_reduced
+                z_dgamma_pi = (
+                    2
+                    * frequency_integral.floquet_matrix_integral(
+                        chi_reduced,
+                        z_reduced @ dGamma_reduced,
+                        chi_reduced,
+                        self.integral_method,
+                    )
+                    @ z_reduced
+                )
             else:
-                z_dgamma_pi = z_reduced @ dGamma_reduced @ pi_reduced \
-                            + pi_reduced @ dGamma_reduced @ z_reduced # costs: 4/4/4
+                z_dgamma_pi = (
+                    z_reduced @ dGamma_reduced @ pi_reduced
+                    + pi_reduced @ dGamma_reduced @ z_reduced
+                )  # costs: 4/4/4
             del z_reduced, pi_reduced, dGamma_reduced
             if self.compact:
                 assert isinstance(z_dgamma_pi, SymRGfunction)
             if settings.ENFORCE_SYMMETRIC:
                 assert z_dgamma_pi.symmetry == -1
-            self.deltaGammaLE += (-0.75)*einsum_34_12_43( self.current, z_dgamma_pi, self.g3 ) # costs: 32/20/10
+            self.deltaGammaLE += (-0.75) * einsum_34_12_43(
+                self.current, z_dgamma_pi, self.g3
+            )  # costs: 32/20/10
             del z_dgamma_pi
         self.deltaGammaLE.symmetry = -symmetry
 
-
         # RG equation for ΓL
         self.gammaLE = self.yL
-        self.yLE = 1.5j*(i_pi[0,0] @ self.g3[0,0] + i_pi[1,1] @ self.g3[1,1] + i_pi_g3_01 + i_pi_g3_10) # costs: 2/2/2
+        self.yLE = 1.5j * (
+            i_pi[0, 0] @ self.g3[0, 0]
+            + i_pi[1, 1] @ self.g3[1, 1]
+            + i_pi_g3_01
+            + i_pi_g3_10
+        )  # costs: 2/2/2
         self.yLE.symmetry = symmetry
         del i_pi, i_pi_g3_10, i_pi_g3_01
 
         if self.compact:
             # TODO: This is probably inefficient
             if not isinstance(self.deltaGammaE, SymRGfunction):
-                self.deltaGammaE = SymRGfunction.fromRGfunction(self.deltaGammaE, diag=False, offdiag=True)
+                self.deltaGammaE = SymRGfunction.fromRGfunction(
+                    self.deltaGammaE, diag=False, offdiag=True
+                )
             if not isinstance(self.deltaGammaLE, SymRGfunction):
-                self.deltaGammaLE = SymRGfunction.fromRGfunction(self.deltaGammaLE, diag=True, offdiag=False)
-            if not isinstance(self.g2E[0,0], SymRGfunction):
-                self.g2E[0,0] = SymRGfunction.fromRGfunction(self.g2E[0,0], diag=True, offdiag=False)
-            if not isinstance(self.g2E[1,1], SymRGfunction):
-                self.g2E[1,1] = SymRGfunction.fromRGfunction(self.g2E[1,1], diag=True, offdiag=False)
-            if not isinstance(self.g3E[0,0], SymRGfunction):
-                self.g3E[0,0] = SymRGfunction.fromRGfunction(self.g3E[0,0], diag=True, offdiag=False)
-            if not isinstance(self.g3E[1,1], SymRGfunction):
-                self.g3E[1,1] = SymRGfunction.fromRGfunction(self.g3E[1,1], diag=True, offdiag=False)
+                self.deltaGammaLE = SymRGfunction.fromRGfunction(
+                    self.deltaGammaLE, diag=True, offdiag=False
+                )
+            if not isinstance(self.g2E[0, 0], SymRGfunction):
+                self.g2E[0, 0] = SymRGfunction.fromRGfunction(
+                    self.g2E[0, 0], diag=True, offdiag=False
+                )
+            if not isinstance(self.g2E[1, 1], SymRGfunction):
+                self.g2E[1, 1] = SymRGfunction.fromRGfunction(
+                    self.g2E[1, 1], diag=True, offdiag=False
+                )
+            if not isinstance(self.g3E[0, 0], SymRGfunction):
+                self.g3E[0, 0] = SymRGfunction.fromRGfunction(
+                    self.g3E[0, 0], diag=True, offdiag=False
+                )
+            if not isinstance(self.g3E[1, 1], SymRGfunction):
+                self.g3E[1, 1] = SymRGfunction.fromRGfunction(
+                    self.g3E[1, 1], diag=True, offdiag=False
+                )
             if self.include_Ga:
                 if hasattr(self, "ga_scalar"):
                     if not isinstance(self.ga_scalarE, SymRGfunction):
-                        self.ga_scalarE = SymRGfunction.fromRGfunction(self.ga_scalarE, diag=True, offdiag=False)
+                        self.ga_scalarE = SymRGfunction.fromRGfunction(
+                            self.ga_scalarE, diag=True, offdiag=False
+                        )
                 else:
-                    if not isinstance(self.gaE[0,0], SymRGfunction):
-                        self.gaE[0,0] = SymRGfunction.fromRGfunction(self.gaE[0,0], diag=True, offdiag=False)
-                    if not isinstance(self.gaE[1,1], SymRGfunction):
-                        self.gaE[1,1] = SymRGfunction.fromRGfunction(self.gaE[1,1], diag=True, offdiag=False)
-            if not isinstance(self.currentE[0,0], SymRGfunction):
-                self.currentE[0,0] = SymRGfunction.fromRGfunction(self.currentE[0,0], diag=False, offdiag=True)
-            if not isinstance(self.currentE[1,1], SymRGfunction):
-                self.currentE[1,1] = SymRGfunction.fromRGfunction(self.currentE[1,1], diag=False, offdiag=True)
+                    if not isinstance(self.gaE[0, 0], SymRGfunction):
+                        self.gaE[0, 0] = SymRGfunction.fromRGfunction(
+                            self.gaE[0, 0], diag=True, offdiag=False
+                        )
+                    if not isinstance(self.gaE[1, 1], SymRGfunction):
+                        self.gaE[1, 1] = SymRGfunction.fromRGfunction(
+                            self.gaE[1, 1], diag=True, offdiag=False
+                        )
+            if not isinstance(self.currentE[0, 0], SymRGfunction):
+                self.currentE[0, 0] = SymRGfunction.fromRGfunction(
+                    self.currentE[0, 0], diag=False, offdiag=True
+                )
+            if not isinstance(self.currentE[1, 1], SymRGfunction):
+                self.currentE[1, 1] = SymRGfunction.fromRGfunction(
+                    self.currentE[1, 1], diag=False, offdiag=True
+                )
             if not isinstance(self.yLE, SymRGfunction):
-                self.yLE = SymRGfunction.fromRGfunction(self.yLE, diag=False, offdiag=True)
+                self.yLE = SymRGfunction.fromRGfunction(
+                    self.yLE, diag=False, offdiag=True
+                )
 
         # Count calls to RG equations.
         self.total_iterations += 1
-
 
     def updateRGequations_reference(self):
         """
@@ -1869,18 +2082,19 @@ class Kondo:
         il = self.current
         yL = self.yL
         # Identity matrix
-        identity = RGfunction(self.global_properties, 'identity')
+        identity = RGfunction(self.global_properties, "identity")
         # Resolvent
-        pi = self.pi = (-1j*gamma).k2lambda(self.mu)
+        pi = self.pi = (-1j * gamma).k2lambda(self.mu)
 
         # Compute the sum
         #  Σ  A   B  C
         # 1,2  12     21
-        einsum_34_x_43 = lambda a, b, c: \
-                  a[0,0] @ b @ c[0,0] \
-                + a[0,1] @ b @ c[1,0] \
-                + a[1,0] @ b @ c[0,1] \
-                + a[1,1] @ b @ c[1,1]
+        einsum_34_x_43 = (
+            lambda a, b, c: a[0, 0] @ b @ c[0, 0]
+            + a[0, 1] @ b @ c[1, 0]
+            + a[1, 0] @ b @ c[0, 1]
+            + a[1, 1] @ b @ c[1, 1]
+        )
 
         ### RG equations in human readable form
 
@@ -1896,7 +2110,7 @@ class Kondo:
         # dΓ      ⎛ 1     ⎞
         # —— = -i ⎜ — - 1 ⎟
         # dE      ⎝ Z     ⎠
-        self.gammaE = -1j*(z.inverse() - identity)
+        self.gammaE = -1j * (z.inverse() - identity)
 
         # dZ
         # —— = Z tr( G² Π G² ) Z
@@ -1907,7 +2121,7 @@ class Kondo:
             # dGa   1           1 ⎛  ⊤     ⊤⎞⊤
             # ——— = — G² Π G² - — ⎜G²  Π G² ⎟
             # dE    2           2 ⎝         ⎠
-            self.gaE = .5 * g2 @ pi @ g2 - .5 * ((g2 @ pi) % g2)
+            self.gaE = 0.5 * g2 @ pi @ g2 - 0.5 * ((g2 @ pi) % g2)
 
         if self.truncation_order == 3:
             if settings.EXTRAPOLATE_VOLTAGE:
@@ -1918,7 +2132,9 @@ class Kondo:
                 #             ⎛ ∞     1          1   ⎞
                 # bracket = 2 ⎜ ∫dω ————— Z G² ————— ⎟ Z
                 #             ⎝ 0   ω + χ      ω + χ ⎠
-                bracket = 2 * frequency_integral.reservoir_matrix_integral(chi, self.z @ self.g2, chi, self.integral_method)
+                bracket = 2 * frequency_integral.reservoir_matrix_integral(
+                    chi, self.z @ self.g2, chi, self.integral_method
+                )
                 bracket @= z
             else:
                 # bracket = Π G² Z + Z G² Π
@@ -1927,18 +2143,26 @@ class Kondo:
             # dG²   1           1 ⎛  ⊤     ⊤⎞⊤   1     ⎛                 ⎞
             # ——— = — G² Π G² + — ⎜G²  Π G² ⎟  - — G²  ⎜ Π G² Z + Z G² Π ⎟ G²
             # dE    2           2 ⎝         ⎠    4  34 ⎝                 ⎠  43
-            self.g2E = .5 * g2 @ pi @ g2 + .5 * ((g2 @ pi) % g2) - .25 * einsum_34_x_43(g2, bracket, g2)
+            self.g2E = (
+                0.5 * g2 @ pi @ g2
+                + 0.5 * ((g2 @ pi) % g2)
+                - 0.25 * einsum_34_x_43(g2, bracket, g2)
+            )
 
             # dG³             ⎛  ⊤     ⊤⎞⊤   1     ⎛                 ⎞
             # ——— = G² Π G³ + ⎜G²  Π G³ ⎟  + — G²  ⎜ Π G² Z + Z G² Π ⎟ G³
             # dE              ⎝         ⎠    2  34 ⎝                 ⎠  43
-            self.g3E = g2 @ pi @ g3 + ((g2 @ pi) % g3) + .5 * einsum_34_x_43(g2, bracket, g3)
+            self.g3E = (
+                g2 @ pi @ g3 + ((g2 @ pi) % g3) + 0.5 * einsum_34_x_43(g2, bracket, g3)
+            )
 
             #   γ
             # dI     γ        ⎛ γ⊤     ⊤⎞⊤   1  γ  ⎛                 ⎞
             # ——— = I  Π G² + ⎜I   Π G² ⎟  + — I   ⎜ Π G² Z + Z G² Π ⎟ G²
             # dE              ⎝         ⎠    2  34 ⎝                 ⎠  43
-            self.currentE = il @ pi @ g2 + ((il @ pi) % g2) + .5 * einsum_34_x_43(il, bracket, g2)
+            self.currentE = (
+                il @ pi @ g2 + ((il @ pi) % g2) + 0.5 * einsum_34_x_43(il, bracket, g2)
+            )
 
             if self.include_Ga:
                 ga = self.ga
@@ -1946,7 +2170,9 @@ class Kondo:
                 # dG²              ⎛  ⊤     ⊤⎞⊤             ⎛  ⊤     ⊤⎞⊤
                 # ——— += G² Π Ga - ⎜G²  Π Ga ⎟  + Ga Π G² - ⎜Ga  Π G² ⎟
                 # dE               ⎝         ⎠              ⎝         ⎠
-                self.g2E += g2 @ pi @ ga + ga @ pi @ g2 - ((g2 @ pi) % ga) - ((ga @ pi) % g2)
+                self.g2E += (
+                    g2 @ pi @ ga + ga @ pi @ g2 - ((g2 @ pi) % ga) - ((ga @ pi) % g2)
+                )
 
                 # dG³              ⎛  ⊤     ⊤⎞⊤
                 # ——— += Ga Π G³ - ⎜Ga  Π G³ ⎟
@@ -1963,7 +2189,7 @@ class Kondo:
             # dG²   1           1 ⎛  ⊤     ⊤⎞⊤
             # ——— = — G² Π G² + — ⎜G²  Π G² ⎟
             # dE    2           2 ⎝         ⎠
-            self.g2E = .5 * g2 @ pi @ g2 + .5 * ((g2 @ pi) % g2)
+            self.g2E = 0.5 * g2 @ pi @ g2 + 0.5 * ((g2 @ pi) % g2)
 
             # dG³             ⎛  ⊤     ⊤⎞⊤
             # ——— = G² Π G³ + ⎜G²  Π G³ ⎟
@@ -1977,12 +2203,12 @@ class Kondo:
             self.currentE = il @ pi @ g2 + ((il @ pi) % g2)
 
         else:
-            raise ValueError("Invalid truncation order: %s"%self.truncation_order)
+            raise ValueError("Invalid truncation order: %s" % self.truncation_order)
 
         # dδΓ     ⎛           ⎞
         # ——— = i ⎜ δ  - δ    ⎟ G²  Π G²
         # dE      ⎝  1L    2L ⎠  12    21
-        deltaGammaE = 1j * (g2[0,1] @ pi @ g2[1,0] - g2[1,0] @ pi @ g2[0,1])
+        deltaGammaE = 1j * (g2[0, 1] @ pi @ g2[1, 0] - g2[1, 0] @ pi @ g2[0, 1])
 
         # Reduction of voltage branches as required for the solver.
         # In this step some information is thrown away that cannot affect the
@@ -1995,20 +2221,35 @@ class Kondo:
         # dδΓ    3   ⎛           ⎞  γ
         # ———— = — i ⎜ δ  - δ    ⎟ I   Π G³
         #  dE    2   ⎝  1L    2L ⎠  12    21
-        self.deltaGammaLE = 1.5j * (il[0,1] @ pi @ g3[1,0] - il[1,0] @ pi @ g3[0,1])
+        self.deltaGammaLE = 1.5j * (il[0, 1] @ pi @ g3[1, 0] - il[1, 0] @ pi @ g3[0, 1])
 
         if self.truncation_order == 3:
             if self.solve_integral_exactly:
                 # TODO: check this!
                 chi_reduced = chi.reduced_to_voltage_branches(1)
-                integral_result = frequency_integral.floquet_matrix_integral(chi_reduced, z_reduced @ deltaGamma, chi_reduced, self.integral_method) @ z_reduced
+                integral_result = (
+                    frequency_integral.floquet_matrix_integral(
+                        chi_reduced,
+                        z_reduced @ deltaGamma,
+                        chi_reduced,
+                        self.integral_method,
+                    )
+                    @ z_reduced
+                )
                 self.deltaGammaLE += (-1.5) * (il @ integral_result @ g3).tr()
             else:
                 #    γ
                 # dδΓ     3    ⎛ γ⎛                 ⎞   ⎞
                 # ———— -= — tr ⎜I ⎜ Π δΓ Z + Z δΓ Π ⎟ G³⎟
                 #  dE     4    ⎝  ⎝                 ⎠   ⎠
-                self.deltaGammaLE += (-0.75) * (il @ (pi_reduced @ deltaGamma @ z_reduced + z_reduced @ deltaGamma @ pi_reduced) @ g3).tr()
+                self.deltaGammaLE += (-0.75) * (
+                    il
+                    @ (
+                        pi_reduced @ deltaGamma @ z_reduced
+                        + z_reduced @ deltaGamma @ pi_reduced
+                    )
+                    @ g3
+                ).tr()
 
         #   γ
         # dΓ     γ
@@ -2024,7 +2265,6 @@ class Kondo:
 
         # Count calls to RG equations.
         self.total_iterations += 1
-
 
     def updateRGequationsMinimal(self):
         """
@@ -2044,43 +2284,51 @@ class Kondo:
         """
         # TODO: update handling of Ga
         if settings.ENFORCE_SYMMETRIC:
-            if hasattr(self, 'pi'):
+            if hasattr(self, "pi"):
                 assert self.pi.symmetry == -1
             assert self.z.symmetry == 1
             assert self.gamma.symmetry == 1
-            assert self.g2[0,0].symmetry == 1
-            assert self.g2[1,1].symmetry == 1
+            assert self.g2[0, 0].symmetry == 1
+            assert self.g2[1, 1].symmetry == 1
             if self.include_Ga:
-                assert self.ga[0,0].symmetry == -1
-                assert self.ga[1,1].symmetry == -1
+                assert self.ga[0, 0].symmetry == -1
+                assert self.ga[1, 1].symmetry == -1
 
         # Print some log message to indicate progress
         global LAST_LOG_TIME, REF_TIME
         if settings.LOG_TIME > 0 and time() - LAST_LOG_TIME >= settings.LOG_TIME:
             LAST_LOG_TIME = time()
             settings.logger.info(
-                    "%9.2fs:  Λ = %.4e,  iterations = %d"%(
-                        process_time(), self.energy.imag, self.total_iterations))
+                "%9.2fs:  Λ = %.4e,  iterations = %d"
+                % (process_time(), self.energy.imag, self.total_iterations)
+            )
 
         if settings.USE_REFERENCE_IMPLEMENTATION:
-            settings.logger.warn("There is no reference implementation for minimal RG equations. Using default implementation.")
+            settings.logger.warn(
+                "There is no reference implementation for minimal RG equations. Using default implementation."
+            )
 
         symmetry = 0 if settings.IGNORE_SYMMETRIES else 1
 
         ## RG eq for Γ
-        zinv = self.z.inverse() # costs: 1 inversion
-        self.gammaE = -1j*( zinv - (SymRGfunction if self.compact else RGfunction)(self.global_properties, 'identity') )
+        zinv = self.z.inverse()  # costs: 1 inversion
+        self.gammaE = -1j * (
+            zinv
+            - (SymRGfunction if self.compact else RGfunction)(
+                self.global_properties, "identity"
+            )
+        )
         del zinv
 
         # Derivative of G2
         # First calculate Π (at E and shifted by multiples of vdc or mu):
-        self.pi = (-1j*self.gamma).k2lambda(self.mu) # costs: 1 inversion
+        self.pi = (-1j * self.gamma).k2lambda(self.mu)  # costs: 1 inversion
 
         # first terms of g2E:
         # 1/2  G13  Π  G32 ,
         # 1/2  G32  Π  G13
-        g2_pi = self.g2 @ self.pi # costs: 4/3/2
-        g2E1, g2E2 = product_combinations( g2_pi, self.g2 ) # costs: 12/7/4
+        g2_pi = self.g2 @ self.pi  # costs: 4/3/2
+        g2E1, g2E2 = product_combinations(g2_pi, self.g2)  # costs: 12/7/4
         # g2E1.tr() = -i (d/dE)² Γ
         g2E1tr = g2E1.tr()
         g2E1tr.symmetry = -symmetry
@@ -2088,13 +2336,13 @@ class Kondo:
             g2E1tr = SymRGfunction.fromRGfunction(g2E1tr, diag=True, offdiag=False)
         g2E1 *= 0.5
         g2E2 *= 0.5
-        self.zE = self.z @ g2E1tr @ self.z # costs: 2/2/2
+        self.zE = self.z @ g2E1tr @ self.z  # costs: 2/2/2
         del g2E1tr
 
         ## RG eq for Ga
         if self.include_Ga:
             if hasattr(self, "ga_scalar"):
-                self.ga_scalarE = g2E1[0,0] - g2E2[0,0]
+                self.ga_scalarE = g2E1[0, 0] - g2E2[0, 0]
             else:
                 self.gaE = g2E1 - g2E2
 
@@ -2110,52 +2358,67 @@ class Kondo:
                 #             ⎛ ∞     1          1   ⎞
                 # bracket = 2 ⎜ ∫dω ————— Z G² ————— ⎟ Z
                 #             ⎝ 0   ω + χ      ω + χ ⎠
-                pi_g2_z = 2 * frequency_integral.reservoir_matrix_integral(chi, self.z @ self.g2, chi, self.integral_method)
+                pi_g2_z = 2 * frequency_integral.reservoir_matrix_integral(
+                    chi, self.z @ self.g2, chi, self.integral_method
+                )
                 pi_g2_z @= self.z
             else:
-                pi_g2_z = self.pi @ self.g2 @ self.z + self.z @ g2_pi # costs: 12/9/6
+                pi_g2_z = self.pi @ self.g2 @ self.z + self.z @ g2_pi  # costs: 12/9/6
 
             ## RG eq for G2
-            self.g2E += (-0.25)*einsum_34_12_43(self.g2, pi_g2_z, self.g2)
+            self.g2E += (-0.25) * einsum_34_12_43(self.g2, pi_g2_z, self.g2)
             del pi_g2_z
 
             if self.include_Ga:
                 if hasattr(self, "ga_scalar"):
-                    ga_pi2 = 2*self.ga_scalar @ self.pi
-                    ga_pi_g2 = ga_pi2 @ self.g2[0,1] - 2*g2_pi[0,1] @ self.ga_scalar
+                    ga_pi2 = 2 * self.ga_scalar @ self.pi
+                    ga_pi_g2 = ga_pi2 @ self.g2[0, 1] - 2 * g2_pi[0, 1] @ self.ga_scalar
                     ga_pi_g2_conj = ga_pi_g2.floquetConjugate()
                     ga_pi_g2_conj.voltage_shifts = -1
-                    self.g2E[0,1] += ga_pi_g2
-                    self.g2E[1,0] -= ga_pi_g2_conj
+                    self.g2E[0, 1] += ga_pi_g2
+                    self.g2E[1, 0] -= ga_pi_g2_conj
                     del ga_pi_g2, ga_pi_g2_conj
                 else:
                     ga_pi = self.ga @ self.pi
-                    g2_pi_ga_1, g2_pi_ga_2 = product_combinations( g2_pi, self.ga ) # costs: 12/7/4
-                    ga_pi_g2_1, ga_pi_g2_2 = product_combinations( ga_pi, self.g2 ) # costs: 12/7/4
+                    g2_pi_ga_1, g2_pi_ga_2 = product_combinations(
+                        g2_pi, self.ga
+                    )  # costs: 12/7/4
+                    ga_pi_g2_1, ga_pi_g2_2 = product_combinations(
+                        ga_pi, self.g2
+                    )  # costs: 12/7/4
                     self.g2E += g2_pi_ga_1 + ga_pi_g2_1 - g2_pi_ga_2 - ga_pi_g2_2
         self.g2E.symmetry = -symmetry
-        self.g2E[0,0].symmetry = -symmetry
-        self.g2E[1,1].symmetry = -symmetry
+        self.g2E[0, 0].symmetry = -symmetry
+        self.g2E[1, 1].symmetry = -symmetry
         del g2E1, g2E2, g2_pi
 
         if self.compact:
-            if not isinstance(self.g2E[0,0], SymRGfunction):
-                self.g2E[0,0] = SymRGfunction.fromRGfunction(self.g2E[0,0], diag=True, offdiag=False)
-            if not isinstance(self.g2E[1,1], SymRGfunction):
-                self.g2E[1,1] = SymRGfunction.fromRGfunction(self.g2E[1,1], diag=True, offdiag=False)
+            if not isinstance(self.g2E[0, 0], SymRGfunction):
+                self.g2E[0, 0] = SymRGfunction.fromRGfunction(
+                    self.g2E[0, 0], diag=True, offdiag=False
+                )
+            if not isinstance(self.g2E[1, 1], SymRGfunction):
+                self.g2E[1, 1] = SymRGfunction.fromRGfunction(
+                    self.g2E[1, 1], diag=True, offdiag=False
+                )
             if self.include_Ga:
                 if hasattr(self, "ga_scalar"):
                     if not isinstance(self.ga_scalarE, SymRGfunction):
-                        self.ga_scalarE = SymRGfunction.fromRGfunction(self.ga_scalarE, diag=True, offdiag=False)
+                        self.ga_scalarE = SymRGfunction.fromRGfunction(
+                            self.ga_scalarE, diag=True, offdiag=False
+                        )
                 else:
-                    if not isinstance(self.gaE[0,0], SymRGfunction):
-                        self.gaE[0,0] = SymRGfunction.fromRGfunction(self.gaE[0,0], diag=True, offdiag=False)
-                    if not isinstance(self.gaE[1,1], SymRGfunction):
-                        self.gaE[1,1] = SymRGfunction.fromRGfunction(self.gaE[1,1], diag=True, offdiag=False)
+                    if not isinstance(self.gaE[0, 0], SymRGfunction):
+                        self.gaE[0, 0] = SymRGfunction.fromRGfunction(
+                            self.gaE[0, 0], diag=True, offdiag=False
+                        )
+                    if not isinstance(self.gaE[1, 1], SymRGfunction):
+                        self.gaE[1, 1] = SymRGfunction.fromRGfunction(
+                            self.gaE[1, 1], diag=True, offdiag=False
+                        )
 
         # Count calls to RG equations.
         self.total_iterations += 1
-
 
     def check_symmetry(self):
         """Check if all symmetries are fulfilled"""
@@ -2170,7 +2433,6 @@ class Kondo:
         if self.include_Ga:
             self.ga.check_symmetry()
         self.current.check_symmetry()
-
 
     def unpackFlattenedValues(self, flattened_values):
         """
@@ -2202,140 +2464,276 @@ class Kondo:
             l = self.z.values.size
             if self.include_Ga:
                 if hasattr(self, "ga_scalar"):
-                    assert flattened_values.size == 11*l+m+7*s
+                    assert flattened_values.size == 11 * l + m + 7 * s
                 else:
-                    assert flattened_values.size == 14*l+m+7*s
+                    assert flattened_values.size == 14 * l + m + 7 * s
             else:
-                assert flattened_values.size == 10*l+m+7*s
+                assert flattened_values.size == 10 * l + m + 7 * s
             self.gamma.values = flattened_values[:l].reshape(self.gamma.values.shape)
-            self.z.values = flattened_values[l:2*l].reshape(self.z.values.shape)
-            self.deltaGamma.values = flattened_values[2*l:2*l+m].reshape(self.deltaGamma.values.shape)
-            for (g2i, flat) in zip(self.g2.data.flat, np.split(flattened_values[2*l+m:6*l+m], 4)):
+            self.z.values = flattened_values[l : 2 * l].reshape(self.z.values.shape)
+            self.deltaGamma.values = flattened_values[2 * l : 2 * l + m].reshape(
+                self.deltaGamma.values.shape
+            )
+            for g2i, flat in zip(
+                self.g2.data.flat, np.split(flattened_values[2 * l + m : 6 * l + m], 4)
+            ):
                 g2i.values = flat.reshape(g2i.values.shape)
-            for (g3i, flat) in zip(self.g3.data.flat, np.split(flattened_values[6*l+m:10*l+m], 4)):
+            for g3i, flat in zip(
+                self.g3.data.flat, np.split(flattened_values[6 * l + m : 10 * l + m], 4)
+            ):
                 g3i.values = flat.reshape(g3i.values.shape)
-            for (ii, flat) in zip(self.current.data.flat, np.split(flattened_values[10*l+m:10*l+m+4*s], 4)):
+            for ii, flat in zip(
+                self.current.data.flat,
+                np.split(flattened_values[10 * l + m : 10 * l + m + 4 * s], 4),
+            ):
                 ii.values = flat.reshape(ii.values.shape)
-            self.deltaGammaL.values = flattened_values[10*l+m+4*s:10*l+m+5*s].reshape(self.deltaGammaL.values.shape)
-            self.gammaL.values = flattened_values[10*l+m+5*s:10*l+m+6*s].reshape(self.gammaL.values.shape)
-            self.yL.values = flattened_values[10*l+m+6*s:10*l+m+7*s].reshape(self.yL.values.shape)
+            self.deltaGammaL.values = flattened_values[
+                10 * l + m + 4 * s : 10 * l + m + 5 * s
+            ].reshape(self.deltaGammaL.values.shape)
+            self.gammaL.values = flattened_values[
+                10 * l + m + 5 * s : 10 * l + m + 6 * s
+            ].reshape(self.gammaL.values.shape)
+            self.yL.values = flattened_values[
+                10 * l + m + 6 * s : 10 * l + m + 7 * s
+            ].reshape(self.yL.values.shape)
             if self.include_Ga:
-                if flattened_values.size == 11*l+m+7*s:
-                    self.ga_scalar.values = flattened_values[10*l+m+7*s:11*l+m+7*s].reshape(self.ga_scalar.values.shape)
+                if flattened_values.size == 11 * l + m + 7 * s:
+                    self.ga_scalar.values = flattened_values[
+                        10 * l + m + 7 * s : 11 * l + m + 7 * s
+                    ].reshape(self.ga_scalar.values.shape)
                 else:
-                    for (gai, flat) in zip(self.ga.data.flat, np.split(flattened_values[10*l+m+7*s:14*l+m+7*s], 4)):
+                    for gai, flat in zip(
+                        self.ga.data.flat,
+                        np.split(
+                            flattened_values[10 * l + m + 7 * s : 14 * l + m + 7 * s], 4
+                        ),
+                    ):
                         gai.values = flat.reshape(gai.values.shape)
         elif self.compact == 1:
             nmax = self.nmax
-            f = (2*nmax+1)**2
-            o = (nmax+1)**2
+            f = (2 * nmax + 1) ** 2
+            o = (nmax + 1) ** 2
             i = nmax**2
-            m = nmax*(nmax+1)
-            shape_f = (2*nmax+1, 2*nmax+1)
-            shape00 = (nmax+1, nmax+1)
+            m = nmax * (nmax + 1)
+            shape_f = (2 * nmax + 1, 2 * nmax + 1)
+            shape00 = (nmax + 1, nmax + 1)
             shape11 = (nmax, nmax)
-            shape01 = (nmax+1, nmax)
-            shape10 = (nmax, nmax+1)
+            shape01 = (nmax + 1, nmax)
+            shape10 = (nmax, nmax + 1)
             if self.include_Ga and hasattr(self, "ga_scalar"):
-                assert flattened_values.size == 8*(o+i) + 10*m + 6*f
+                assert flattened_values.size == 8 * (o + i) + 10 * m + 6 * f
             elif self.include_Ga:
-                assert flattened_values.size == 9*(o+i) + 10*m + 8*f
+                assert flattened_values.size == 9 * (o + i) + 10 * m + 8 * f
             else:
-                assert flattened_values.size == 7*(o+i) + 10*m + 6*f
+                assert flattened_values.size == 7 * (o + i) + 10 * m + 6 * f
             self.gamma.submatrix00 = flattened_values[:o].reshape(shape00)
-            self.z.submatrix00 = flattened_values[o:2*o].reshape(shape00)
-            self.deltaGammaL.submatrix00 = flattened_values[2*o:3*o].reshape(shape00)
-            self.g2[0,0].submatrix00 = flattened_values[3*o:4*o].reshape(shape00)
-            self.g2[1,1].submatrix00 = flattened_values[4*o:5*o].reshape(shape00)
-            self.g3[0,0].submatrix00 = flattened_values[5*o:6*o].reshape(shape00)
-            self.g3[1,1].submatrix00 = flattened_values[6*o:7*o].reshape(shape00)
-            self.gamma.submatrix11 = flattened_values[7*o:7*o+i].reshape(shape11)
-            self.z.submatrix11 = flattened_values[7*o+i:7*o+2*i].reshape(shape11)
-            self.deltaGammaL.submatrix11 = flattened_values[7*o+2*i:7*o+3*i].reshape(shape11)
-            self.g2[0,0].submatrix11 = flattened_values[7*o+3*i:7*o+4*i].reshape(shape11)
-            self.g2[1,1].submatrix11 = flattened_values[7*o+4*i:7*o+5*i].reshape(shape11)
-            self.g3[0,0].submatrix11 = flattened_values[7*o+5*i:7*o+6*i].reshape(shape11)
-            self.g3[1,1].submatrix11 = flattened_values[7*o+6*i:7*(o+i)].reshape(shape11)
-            self.gammaL.submatrix01 = flattened_values[7*(o+i):7*(o+i)+m].reshape(shape01)
-            self.gammaL.submatrix10 = flattened_values[7*(o+i)+m:7*(o+i)+2*m].reshape(shape10)
-            self.deltaGamma.submatrix01 = flattened_values[7*(o+i)+2*m:7*(o+i)+3*m].reshape(shape01)
-            self.deltaGamma.submatrix10 = flattened_values[7*(o+i)+3*m:7*(o+i)+4*m].reshape(shape10)
-            self.yL.submatrix01 = flattened_values[7*(o+i)+4*m:7*(o+i)+5*m].reshape(shape01)
-            self.yL.submatrix10 = flattened_values[7*(o+i)+5*m:7*(o+i)+6*m].reshape(shape10)
-            self.current[0,0].submatrix01 = flattened_values[7*(o+i)+6*m:7*(o+i+m)].reshape(shape01)
-            self.current[0,0].submatrix10 = flattened_values[7*(o+i+m):7*(o+i)+8*m].reshape(shape10)
-            self.current[1,1].submatrix01 = flattened_values[7*(o+i)+8*m:7*(o+i)+9*m].reshape(shape01)
-            self.current[1,1].submatrix10 = flattened_values[7*(o+i)+9*m:7*(o+i)+10*m].reshape(shape10)
-            self.g2[0,1].values = flattened_values[7*(o+i)+10*m:7*(o+i)+10*m+f].reshape(shape_f)
-            self.g2[1,0].values = flattened_values[7*(o+i)+10*m+f:7*(o+i)+10*m+2*f].reshape(shape_f)
-            self.g3[0,1].values = flattened_values[7*(o+i)+10*m+2*f:7*(o+i)+10*m+3*f].reshape(shape_f)
-            self.g3[1,0].values = flattened_values[7*(o+i)+10*m+3*f:7*(o+i)+10*m+4*f].reshape(shape_f)
-            self.current[0,1].values = flattened_values[7*(o+i)+10*m+4*f:7*(o+i)+10*m+5*f].reshape(shape_f)
-            self.current[1,0].values = flattened_values[7*(o+i)+10*m+5*f:7*(o+i)+10*m+6*f].reshape(shape_f)
+            self.z.submatrix00 = flattened_values[o : 2 * o].reshape(shape00)
+            self.deltaGammaL.submatrix00 = flattened_values[2 * o : 3 * o].reshape(
+                shape00
+            )
+            self.g2[0, 0].submatrix00 = flattened_values[3 * o : 4 * o].reshape(shape00)
+            self.g2[1, 1].submatrix00 = flattened_values[4 * o : 5 * o].reshape(shape00)
+            self.g3[0, 0].submatrix00 = flattened_values[5 * o : 6 * o].reshape(shape00)
+            self.g3[1, 1].submatrix00 = flattened_values[6 * o : 7 * o].reshape(shape00)
+            self.gamma.submatrix11 = flattened_values[7 * o : 7 * o + i].reshape(
+                shape11
+            )
+            self.z.submatrix11 = flattened_values[7 * o + i : 7 * o + 2 * i].reshape(
+                shape11
+            )
+            self.deltaGammaL.submatrix11 = flattened_values[
+                7 * o + 2 * i : 7 * o + 3 * i
+            ].reshape(shape11)
+            self.g2[0, 0].submatrix11 = flattened_values[
+                7 * o + 3 * i : 7 * o + 4 * i
+            ].reshape(shape11)
+            self.g2[1, 1].submatrix11 = flattened_values[
+                7 * o + 4 * i : 7 * o + 5 * i
+            ].reshape(shape11)
+            self.g3[0, 0].submatrix11 = flattened_values[
+                7 * o + 5 * i : 7 * o + 6 * i
+            ].reshape(shape11)
+            self.g3[1, 1].submatrix11 = flattened_values[
+                7 * o + 6 * i : 7 * (o + i)
+            ].reshape(shape11)
+            self.gammaL.submatrix01 = flattened_values[
+                7 * (o + i) : 7 * (o + i) + m
+            ].reshape(shape01)
+            self.gammaL.submatrix10 = flattened_values[
+                7 * (o + i) + m : 7 * (o + i) + 2 * m
+            ].reshape(shape10)
+            self.deltaGamma.submatrix01 = flattened_values[
+                7 * (o + i) + 2 * m : 7 * (o + i) + 3 * m
+            ].reshape(shape01)
+            self.deltaGamma.submatrix10 = flattened_values[
+                7 * (o + i) + 3 * m : 7 * (o + i) + 4 * m
+            ].reshape(shape10)
+            self.yL.submatrix01 = flattened_values[
+                7 * (o + i) + 4 * m : 7 * (o + i) + 5 * m
+            ].reshape(shape01)
+            self.yL.submatrix10 = flattened_values[
+                7 * (o + i) + 5 * m : 7 * (o + i) + 6 * m
+            ].reshape(shape10)
+            self.current[0, 0].submatrix01 = flattened_values[
+                7 * (o + i) + 6 * m : 7 * (o + i + m)
+            ].reshape(shape01)
+            self.current[0, 0].submatrix10 = flattened_values[
+                7 * (o + i + m) : 7 * (o + i) + 8 * m
+            ].reshape(shape10)
+            self.current[1, 1].submatrix01 = flattened_values[
+                7 * (o + i) + 8 * m : 7 * (o + i) + 9 * m
+            ].reshape(shape01)
+            self.current[1, 1].submatrix10 = flattened_values[
+                7 * (o + i) + 9 * m : 7 * (o + i) + 10 * m
+            ].reshape(shape10)
+            self.g2[0, 1].values = flattened_values[
+                7 * (o + i) + 10 * m : 7 * (o + i) + 10 * m + f
+            ].reshape(shape_f)
+            self.g2[1, 0].values = flattened_values[
+                7 * (o + i) + 10 * m + f : 7 * (o + i) + 10 * m + 2 * f
+            ].reshape(shape_f)
+            self.g3[0, 1].values = flattened_values[
+                7 * (o + i) + 10 * m + 2 * f : 7 * (o + i) + 10 * m + 3 * f
+            ].reshape(shape_f)
+            self.g3[1, 0].values = flattened_values[
+                7 * (o + i) + 10 * m + 3 * f : 7 * (o + i) + 10 * m + 4 * f
+            ].reshape(shape_f)
+            self.current[0, 1].values = flattened_values[
+                7 * (o + i) + 10 * m + 4 * f : 7 * (o + i) + 10 * m + 5 * f
+            ].reshape(shape_f)
+            self.current[1, 0].values = flattened_values[
+                7 * (o + i) + 10 * m + 5 * f : 7 * (o + i) + 10 * m + 6 * f
+            ].reshape(shape_f)
             if self.include_Ga:
-                if flattened_values.size == 8*(o+i) + 10*m + 6*f:
-                    self.ga_scalar.submatrix00 = flattened_values[7*o+7*i+10*m+6*f:8*o+7*i+10*m+6*f].reshape(shape00)
-                    self.ga_scalar.submatrix11 = flattened_values[8*o+7*i+10*m+6*f:8*o+8*i+10*m+6*f].reshape(shape11)
+                if flattened_values.size == 8 * (o + i) + 10 * m + 6 * f:
+                    self.ga_scalar.submatrix00 = flattened_values[
+                        7 * o + 7 * i + 10 * m + 6 * f : 8 * o + 7 * i + 10 * m + 6 * f
+                    ].reshape(shape00)
+                    self.ga_scalar.submatrix11 = flattened_values[
+                        8 * o + 7 * i + 10 * m + 6 * f : 8 * o + 8 * i + 10 * m + 6 * f
+                    ].reshape(shape11)
                 else:
-                    self.ga[0,0].submatrix00 = flattened_values[7*o+7*i+10*m+6*f:8*o+7*i+10*m+6*f].reshape(shape00)
-                    self.ga[1,1].submatrix00 = flattened_values[8*o+7*i+10*m+6*f:9*o+7*i+10*m+6*f].reshape(shape00)
-                    self.ga[0,0].submatrix11 = flattened_values[9*o+7*i+10*m+6*f:9*o+8*i+10*m+6*f].reshape(shape11)
-                    self.ga[1,1].submatrix11 = flattened_values[9*o+8*i+10*m+6*f:9*o+9*i+10*m+6*f].reshape(shape11)
-                    self.ga[0,1].values = flattened_values[9*o+9*i+10*m+6*f:9*o+9*i+10*m+7*f].reshape(shape_f)
-                    self.ga[1,0].values = flattened_values[9*o+9*i+10*m+7*f:9*o+9*i+10*m+8*f].reshape(shape_f)
+                    self.ga[0, 0].submatrix00 = flattened_values[
+                        7 * o + 7 * i + 10 * m + 6 * f : 8 * o + 7 * i + 10 * m + 6 * f
+                    ].reshape(shape00)
+                    self.ga[1, 1].submatrix00 = flattened_values[
+                        8 * o + 7 * i + 10 * m + 6 * f : 9 * o + 7 * i + 10 * m + 6 * f
+                    ].reshape(shape00)
+                    self.ga[0, 0].submatrix11 = flattened_values[
+                        9 * o + 7 * i + 10 * m + 6 * f : 9 * o + 8 * i + 10 * m + 6 * f
+                    ].reshape(shape11)
+                    self.ga[1, 1].submatrix11 = flattened_values[
+                        9 * o + 8 * i + 10 * m + 6 * f : 9 * o + 9 * i + 10 * m + 6 * f
+                    ].reshape(shape11)
+                    self.ga[0, 1].values = flattened_values[
+                        9 * o + 9 * i + 10 * m + 6 * f : 9 * o + 9 * i + 10 * m + 7 * f
+                    ].reshape(shape_f)
+                    self.ga[1, 0].values = flattened_values[
+                        9 * o + 9 * i + 10 * m + 7 * f : 9 * o + 9 * i + 10 * m + 8 * f
+                    ].reshape(shape_f)
         elif self.compact == 2:
             nmax = self.nmax
-            f = (2*nmax+1)**2
-            o = ((nmax+1)**2 + 1) // 2
+            f = (2 * nmax + 1) ** 2
+            o = ((nmax + 1) ** 2 + 1) // 2
             i = (nmax**2 + 1) // 2
-            m = nmax*(nmax+1) // 2
+            m = nmax * (nmax + 1) // 2
             if self.include_Ga:
-                assert flattened_values.size == 6*(o+i) + 8*m + 3*f
+                assert flattened_values.size == 6 * (o + i) + 8 * m + 3 * f
             else:
-                assert flattened_values.size == 5*(o+i) + 8*m + 3*f
-            unpack01 = lambda flat, sym: np.concatenate((flat, sym*flat[::-1].conjugate()), axis=None).reshape((nmax+1,nmax))
-            unpack10 = lambda flat, sym: np.concatenate((flat, sym*flat[::-1].conjugate()), axis=None).reshape((nmax,nmax+1))
+                assert flattened_values.size == 5 * (o + i) + 8 * m + 3 * f
+            unpack01 = lambda flat, sym: np.concatenate(
+                (flat, sym * flat[::-1].conjugate()), axis=None
+            ).reshape((nmax + 1, nmax))
+            unpack10 = lambda flat, sym: np.concatenate(
+                (flat, sym * flat[::-1].conjugate()), axis=None
+            ).reshape((nmax, nmax + 1))
             if nmax % 2:
-                unpack00 = lambda flat, sym: np.concatenate((flat, sym*flat[::-1].conjugate()), axis=None).reshape((nmax+1,nmax+1))
-                unpack11 = lambda flat, sym: np.concatenate((flat, sym*flat[-2::-1].conjugate()), axis=None).reshape((nmax,nmax))
+                unpack00 = lambda flat, sym: np.concatenate(
+                    (flat, sym * flat[::-1].conjugate()), axis=None
+                ).reshape((nmax + 1, nmax + 1))
+                unpack11 = lambda flat, sym: np.concatenate(
+                    (flat, sym * flat[-2::-1].conjugate()), axis=None
+                ).reshape((nmax, nmax))
             else:
-                unpack00 = lambda flat, sym: np.concatenate((flat, sym*flat[-2::-1].conjugate()), axis=None).reshape((nmax+1,nmax+1))
-                unpack11 = lambda flat, sym: np.concatenate((flat, sym*flat[::-1].conjugate()), axis=None).reshape((nmax,nmax))
+                unpack00 = lambda flat, sym: np.concatenate(
+                    (flat, sym * flat[-2::-1].conjugate()), axis=None
+                ).reshape((nmax + 1, nmax + 1))
+                unpack11 = lambda flat, sym: np.concatenate(
+                    (flat, sym * flat[::-1].conjugate()), axis=None
+                ).reshape((nmax, nmax))
             self.gamma.submatrix00 = unpack00(flattened_values[:o], 1)
-            self.gamma.submatrix11 = unpack11(flattened_values[5*o:5*o+i], 1)
-            self.z.submatrix00 = unpack00(flattened_values[o:2*o], 1)
-            self.z.submatrix11 = unpack11(flattened_values[5*o+i:5*o+2*i], 1)
-            self.deltaGammaL.submatrix00 = unpack00(flattened_values[2*o:3*o], 1)
-            self.deltaGammaL.submatrix11 = unpack11(flattened_values[5*o+2*i:5*o+3*i], 1)
-            self.g2[0,0].submatrix00 = unpack00(flattened_values[3*o:4*o], 1)
-            self.g2[0,0].submatrix11 = unpack11(flattened_values[5*o+3*i:5*o+4*i], 1)
-            self.g2[1,1] = self.g2[0,0].copy()
-            self.g3[0,0].submatrix00 = unpack00(flattened_values[4*o:5*o], -1)
-            self.g3[0,0].submatrix11 = unpack11(flattened_values[5*o+4*i:5*(o+i)], -1)
-            self.g3[1,1] = self.g3[0,0].copy()
-            self.gammaL.submatrix01 = unpack01(flattened_values[5*(o+i):5*(o+i)+m], 1)
-            self.gammaL.submatrix10 = unpack10(flattened_values[5*(o+i)+m:5*(o+i)+2*m], 1)
-            self.deltaGamma.submatrix01 = unpack01(flattened_values[5*(o+i)+2*m:5*(o+i)+3*m], 1)
-            self.deltaGamma.submatrix10 = unpack10(flattened_values[5*(o+i)+3*m:5*(o+i)+4*m], 1)
-            self.yL.submatrix01 = unpack01(flattened_values[5*(o+i)+4*m:5*(o+i+m)], -1)
-            self.yL.submatrix10 = unpack10(flattened_values[5*(o+i+m):5*(o+i)+6*m], -1)
-            self.current[0,0].submatrix01 = unpack01(flattened_values[5*(o+i)+6*m:5*(o+i)+7*m], -1)
-            self.current[0,0].submatrix10 = unpack10(flattened_values[5*(o+i)+7*m:5*(o+i)+8*m], -1)
-            self.current[1,1] = self.current[0,0].copy()
-            self.g2[0,1].values = flattened_values[5*(o+i)+8*m:5*(o+i)+8*m+f].reshape((2*nmax+1, 2*nmax+1))
-            self.g2[1,0] = self.g2[0,1].floquetConjugate()
-            self.g3[0,1].values = flattened_values[5*(o+i)+8*m+f:5*(o+i)+8*m+2*f].reshape((2*nmax+1, 2*nmax+1))
-            self.g3[1,0] = -self.g3[0,1].floquetConjugate()
-            self.current[0,1].values = flattened_values[5*(o+i)+8*m+2*f:5*(o+i)+8*m+3*f].reshape((2*nmax+1, 2*nmax+1))
-            self.current[1,0] = -self.current[0,1].floquetConjugate()
+            self.gamma.submatrix11 = unpack11(flattened_values[5 * o : 5 * o + i], 1)
+            self.z.submatrix00 = unpack00(flattened_values[o : 2 * o], 1)
+            self.z.submatrix11 = unpack11(
+                flattened_values[5 * o + i : 5 * o + 2 * i], 1
+            )
+            self.deltaGammaL.submatrix00 = unpack00(flattened_values[2 * o : 3 * o], 1)
+            self.deltaGammaL.submatrix11 = unpack11(
+                flattened_values[5 * o + 2 * i : 5 * o + 3 * i], 1
+            )
+            self.g2[0, 0].submatrix00 = unpack00(flattened_values[3 * o : 4 * o], 1)
+            self.g2[0, 0].submatrix11 = unpack11(
+                flattened_values[5 * o + 3 * i : 5 * o + 4 * i], 1
+            )
+            self.g2[1, 1] = self.g2[0, 0].copy()
+            self.g3[0, 0].submatrix00 = unpack00(flattened_values[4 * o : 5 * o], -1)
+            self.g3[0, 0].submatrix11 = unpack11(
+                flattened_values[5 * o + 4 * i : 5 * (o + i)], -1
+            )
+            self.g3[1, 1] = self.g3[0, 0].copy()
+            self.gammaL.submatrix01 = unpack01(
+                flattened_values[5 * (o + i) : 5 * (o + i) + m], 1
+            )
+            self.gammaL.submatrix10 = unpack10(
+                flattened_values[5 * (o + i) + m : 5 * (o + i) + 2 * m], 1
+            )
+            self.deltaGamma.submatrix01 = unpack01(
+                flattened_values[5 * (o + i) + 2 * m : 5 * (o + i) + 3 * m], 1
+            )
+            self.deltaGamma.submatrix10 = unpack10(
+                flattened_values[5 * (o + i) + 3 * m : 5 * (o + i) + 4 * m], 1
+            )
+            self.yL.submatrix01 = unpack01(
+                flattened_values[5 * (o + i) + 4 * m : 5 * (o + i + m)], -1
+            )
+            self.yL.submatrix10 = unpack10(
+                flattened_values[5 * (o + i + m) : 5 * (o + i) + 6 * m], -1
+            )
+            self.current[0, 0].submatrix01 = unpack01(
+                flattened_values[5 * (o + i) + 6 * m : 5 * (o + i) + 7 * m], -1
+            )
+            self.current[0, 0].submatrix10 = unpack10(
+                flattened_values[5 * (o + i) + 7 * m : 5 * (o + i) + 8 * m], -1
+            )
+            self.current[1, 1] = self.current[0, 0].copy()
+            self.g2[0, 1].values = flattened_values[
+                5 * (o + i) + 8 * m : 5 * (o + i) + 8 * m + f
+            ].reshape((2 * nmax + 1, 2 * nmax + 1))
+            self.g2[1, 0] = self.g2[0, 1].floquetConjugate()
+            self.g3[0, 1].values = flattened_values[
+                5 * (o + i) + 8 * m + f : 5 * (o + i) + 8 * m + 2 * f
+            ].reshape((2 * nmax + 1, 2 * nmax + 1))
+            self.g3[1, 0] = -self.g3[0, 1].floquetConjugate()
+            self.current[0, 1].values = flattened_values[
+                5 * (o + i) + 8 * m + 2 * f : 5 * (o + i) + 8 * m + 3 * f
+            ].reshape((2 * nmax + 1, 2 * nmax + 1))
+            self.current[1, 0] = -self.current[0, 1].floquetConjugate()
             if self.include_Ga:
-                self.ga_scalar.submatrix00 = unpack00(flattened_values[5*(o+i)+8*m+3*f:6*o+5*i+8*m+3*f], -1)
-                self.ga_scalar.submatrix11 = unpack11(flattened_values[6*o+5*i+8*m+3*f:6*(o+i)+8*m+3*f], -1)
-
+                self.ga_scalar.submatrix00 = unpack00(
+                    flattened_values[
+                        5 * (o + i) + 8 * m + 3 * f : 6 * o + 5 * i + 8 * m + 3 * f
+                    ],
+                    -1,
+                )
+                self.ga_scalar.submatrix11 = unpack11(
+                    flattened_values[
+                        6 * o + 5 * i + 8 * m + 3 * f : 6 * (o + i) + 8 * m + 3 * f
+                    ],
+                    -1,
+                )
 
         if settings.CHECK_SYMMETRIES:
             self.check_symmetry()
-
 
     def unpackFlattenedValuesMinimal(self, flattened_values):
         """
@@ -2359,81 +2757,128 @@ class Kondo:
             l = self.z.values.size
             if self.include_Ga:
                 if hasattr(self, "ga_scalar"):
-                    assert flattened_values.size == 7*l
+                    assert flattened_values.size == 7 * l
                 else:
-                    assert flattened_values.size == 10*l
+                    assert flattened_values.size == 10 * l
             else:
-                assert flattened_values.size == 6*l
+                assert flattened_values.size == 6 * l
             self.gamma.values = flattened_values[:l].reshape(self.gamma.values.shape)
-            self.z.values = flattened_values[l:2*l].reshape(self.z.values.shape)
-            for (g2i, flat) in zip(self.g2.data.flat, np.split(flattened_values[2*l:6*l], 4)):
+            self.z.values = flattened_values[l : 2 * l].reshape(self.z.values.shape)
+            for g2i, flat in zip(
+                self.g2.data.flat, np.split(flattened_values[2 * l : 6 * l], 4)
+            ):
                 g2i.values = flat.reshape(g2i.values.shape)
             if self.include_Ga:
-                if flattened_values.size == 7*l:
-                    self.ga_scalar.values = flattened_values[6*l:7*l].reshape(self.ga_scalar.values.shape)
+                if flattened_values.size == 7 * l:
+                    self.ga_scalar.values = flattened_values[6 * l : 7 * l].reshape(
+                        self.ga_scalar.values.shape
+                    )
                 else:
-                    for (gai, flat) in zip(self.ga.data.flat, np.split(flattened_values[6*l:10*l], 4)):
+                    for gai, flat in zip(
+                        self.ga.data.flat, np.split(flattened_values[6 * l : 10 * l], 4)
+                    ):
                         gai.values = flat.reshape(gai.values.shape)
         elif self.compact == 1:
             nmax = self.nmax
-            f = (2*nmax+1)**2
-            o = (nmax+1)**2
+            f = (2 * nmax + 1) ** 2
+            o = (nmax + 1) ** 2
             i = nmax**2
-            shape_f = (2*nmax+1, 2*nmax+1)
-            shape00 = (nmax+1, nmax+1)
+            shape_f = (2 * nmax + 1, 2 * nmax + 1)
+            shape00 = (nmax + 1, nmax + 1)
             shape11 = (nmax, nmax)
-            shape01 = (nmax+1, nmax)
-            shape10 = (nmax, nmax+1)
+            shape01 = (nmax + 1, nmax)
+            shape10 = (nmax, nmax + 1)
             if self.include_Ga:
-                assert flattened_values.size == 6*(o+i) + 4*f
+                assert flattened_values.size == 6 * (o + i) + 4 * f
             else:
-                assert flattened_values.size == 4*(o+i) + 2*f
+                assert flattened_values.size == 4 * (o + i) + 2 * f
             self.gamma.submatrix00 = flattened_values[:o].reshape(shape00)
-            self.z.submatrix00 = flattened_values[o:2*o].reshape(shape00)
-            self.g2[0,0].submatrix00 = flattened_values[2*o:3*o].reshape(shape00)
-            self.g2[1,1].submatrix00 = flattened_values[3*o:4*o].reshape(shape00)
-            self.gamma.submatrix11 = flattened_values[4*o:4*o+i].reshape(shape11)
-            self.z.submatrix11 = flattened_values[4*o+i:4*o+2*i].reshape(shape11)
-            self.g2[0,0].submatrix11 = flattened_values[4*o+2*i:4*o+3*i].reshape(shape11)
-            self.g2[1,1].submatrix11 = flattened_values[4*o+3*i:4*o+4*i].reshape(shape11)
-            self.g2[0,1].values = flattened_values[4*(o+i):4*(o+i)+f].reshape(shape_f)
-            self.g2[1,0].values = flattened_values[4*(o+i)+f:4*(o+i)+2*f].reshape(shape_f)
+            self.z.submatrix00 = flattened_values[o : 2 * o].reshape(shape00)
+            self.g2[0, 0].submatrix00 = flattened_values[2 * o : 3 * o].reshape(shape00)
+            self.g2[1, 1].submatrix00 = flattened_values[3 * o : 4 * o].reshape(shape00)
+            self.gamma.submatrix11 = flattened_values[4 * o : 4 * o + i].reshape(
+                shape11
+            )
+            self.z.submatrix11 = flattened_values[4 * o + i : 4 * o + 2 * i].reshape(
+                shape11
+            )
+            self.g2[0, 0].submatrix11 = flattened_values[
+                4 * o + 2 * i : 4 * o + 3 * i
+            ].reshape(shape11)
+            self.g2[1, 1].submatrix11 = flattened_values[
+                4 * o + 3 * i : 4 * o + 4 * i
+            ].reshape(shape11)
+            self.g2[0, 1].values = flattened_values[
+                4 * (o + i) : 4 * (o + i) + f
+            ].reshape(shape_f)
+            self.g2[1, 0].values = flattened_values[
+                4 * (o + i) + f : 4 * (o + i) + 2 * f
+            ].reshape(shape_f)
             if self.include_Ga:
-                self.ga[0,0].submatrix00 = flattened_values[4*o+4*i+2*f:5*o+4*i+2*f].reshape(shape00)
-                self.ga[1,1].submatrix00 = flattened_values[5*o+4*i+2*f:6*o+4*i+2*f].reshape(shape00)
-                self.ga[0,0].submatrix11 = flattened_values[6*o+4*i+2*f:6*o+5*i+2*f].reshape(shape11)
-                self.ga[1,1].submatrix11 = flattened_values[6*o+5*i+2*f:6*o+6*i+2*f].reshape(shape11)
-                self.ga[0,1].values = flattened_values[6*(o+i)+2*f:6*(o+i)+3*f].reshape(shape_f)
-                self.ga[1,0].values = flattened_values[6*(o+i)+3*f:6*(o+i)+4*f].reshape(shape_f)
+                self.ga[0, 0].submatrix00 = flattened_values[
+                    4 * o + 4 * i + 2 * f : 5 * o + 4 * i + 2 * f
+                ].reshape(shape00)
+                self.ga[1, 1].submatrix00 = flattened_values[
+                    5 * o + 4 * i + 2 * f : 6 * o + 4 * i + 2 * f
+                ].reshape(shape00)
+                self.ga[0, 0].submatrix11 = flattened_values[
+                    6 * o + 4 * i + 2 * f : 6 * o + 5 * i + 2 * f
+                ].reshape(shape11)
+                self.ga[1, 1].submatrix11 = flattened_values[
+                    6 * o + 5 * i + 2 * f : 6 * o + 6 * i + 2 * f
+                ].reshape(shape11)
+                self.ga[0, 1].values = flattened_values[
+                    6 * (o + i) + 2 * f : 6 * (o + i) + 3 * f
+                ].reshape(shape_f)
+                self.ga[1, 0].values = flattened_values[
+                    6 * (o + i) + 3 * f : 6 * (o + i) + 4 * f
+                ].reshape(shape_f)
         elif self.compact == 2:
             nmax = self.nmax
-            f = (2*nmax+1)**2
-            o = ((nmax+1)**2 + 1) // 2
+            f = (2 * nmax + 1) ** 2
+            o = ((nmax + 1) ** 2 + 1) // 2
             i = (nmax**2 + 1) // 2
             if self.include_Ga:
                 raise NotImplementedError
-            assert flattened_values.size == 3*(o+i) + f
-            unpack01 = lambda flat, sym: np.concatenate((flat, sym*flat[::-1].conjugate()), axis=None).reshape((nmax+1,nmax))
-            unpack10 = lambda flat, sym: np.concatenate((flat, sym*flat[::-1].conjugate()), axis=None).reshape((nmax,nmax+1))
+            assert flattened_values.size == 3 * (o + i) + f
+            unpack01 = lambda flat, sym: np.concatenate(
+                (flat, sym * flat[::-1].conjugate()), axis=None
+            ).reshape((nmax + 1, nmax))
+            unpack10 = lambda flat, sym: np.concatenate(
+                (flat, sym * flat[::-1].conjugate()), axis=None
+            ).reshape((nmax, nmax + 1))
             if nmax % 2:
-                unpack00 = lambda flat, sym: np.concatenate((flat, sym*flat[::-1].conjugate()), axis=None).reshape((nmax+1,nmax+1))
-                unpack11 = lambda flat, sym: np.concatenate((flat, sym*flat[-2::-1].conjugate()), axis=None).reshape((nmax,nmax))
+                unpack00 = lambda flat, sym: np.concatenate(
+                    (flat, sym * flat[::-1].conjugate()), axis=None
+                ).reshape((nmax + 1, nmax + 1))
+                unpack11 = lambda flat, sym: np.concatenate(
+                    (flat, sym * flat[-2::-1].conjugate()), axis=None
+                ).reshape((nmax, nmax))
             else:
-                unpack00 = lambda flat, sym: np.concatenate((flat, sym*flat[-2::-1].conjugate()), axis=None).reshape((nmax+1,nmax+1))
-                unpack11 = lambda flat, sym: np.concatenate((flat, sym*flat[::-1].conjugate()), axis=None).reshape((nmax,nmax))
+                unpack00 = lambda flat, sym: np.concatenate(
+                    (flat, sym * flat[-2::-1].conjugate()), axis=None
+                ).reshape((nmax + 1, nmax + 1))
+                unpack11 = lambda flat, sym: np.concatenate(
+                    (flat, sym * flat[::-1].conjugate()), axis=None
+                ).reshape((nmax, nmax))
             self.gamma.submatrix00 = unpack00(flattened_values[:o], 1)
-            self.z.submatrix00 = unpack00(flattened_values[o:2*o], 1)
-            self.g2[0,0].submatrix00 = unpack00(flattened_values[2*o:3*o], 1)
-            self.gamma.submatrix11 = unpack11(flattened_values[3*o:3*o+i], 1)
-            self.z.submatrix11 = unpack11(flattened_values[3*o+i:3*o+2*i], 1)
-            self.g2[0,0].submatrix11 = unpack11(flattened_values[3*o+2*i:3*(o+i)], 1)
-            self.g2[1,1] = self.g2[0,0].copy()
-            self.g2[0,1].values = flattened_values[3*(o+i):3*(o+i)+f].reshape((2*nmax+1, 2*nmax+1))
-            self.g2[1,0] = self.g2[0,1].floquetConjugate()
+            self.z.submatrix00 = unpack00(flattened_values[o : 2 * o], 1)
+            self.g2[0, 0].submatrix00 = unpack00(flattened_values[2 * o : 3 * o], 1)
+            self.gamma.submatrix11 = unpack11(flattened_values[3 * o : 3 * o + i], 1)
+            self.z.submatrix11 = unpack11(
+                flattened_values[3 * o + i : 3 * o + 2 * i], 1
+            )
+            self.g2[0, 0].submatrix11 = unpack11(
+                flattened_values[3 * o + 2 * i : 3 * (o + i)], 1
+            )
+            self.g2[1, 1] = self.g2[0, 0].copy()
+            self.g2[0, 1].values = flattened_values[
+                3 * (o + i) : 3 * (o + i) + f
+            ].reshape((2 * nmax + 1, 2 * nmax + 1))
+            self.g2[1, 0] = self.g2[0, 1].floquetConjugate()
 
         if settings.CHECK_SYMMETRIES:
             self.check_symmetry()
-
 
     def packFlattenedDerivatives(self):
         """
@@ -2456,16 +2901,16 @@ class Kondo:
         """
         if self.compact == 0:
             all_data = [
-                        self.gammaE.values,
-                        self.zE.values,
-                        self.deltaGammaE.values,
-                        *(g.values for g in self.g2E.data.flat),
-                        *(g.values for g in self.g3E.data.flat),
-                        *(i.values for i in self.currentE.data.flat),
-                        self.deltaGammaLE.values,
-                        self.gammaLE.values,
-                        self.yLE.values,
-                    ]
+                self.gammaE.values,
+                self.zE.values,
+                self.deltaGammaE.values,
+                *(g.values for g in self.g2E.data.flat),
+                *(g.values for g in self.g3E.data.flat),
+                *(i.values for i in self.currentE.data.flat),
+                self.deltaGammaLE.values,
+                self.gammaLE.values,
+                self.yLE.values,
+            ]
             if self.include_Ga:
                 try:
                     all_data.append(self.ga_scalarE.values)
@@ -2486,78 +2931,78 @@ class Kondo:
                 assert self.deltaGammaE.submatrix11 is None
                 assert self.yLE.submatrix00 is None
                 assert self.yLE.submatrix11 is None
-                assert self.g2E[0,0].submatrix01 is None
-                assert self.g2E[1,1].submatrix01 is None
-                assert self.g3E[0,0].submatrix01 is None
-                assert self.g3E[1,1].submatrix01 is None
-                assert self.g2E[0,0].submatrix10 is None
-                assert self.g2E[1,1].submatrix10 is None
-                assert self.g3E[0,0].submatrix10 is None
-                assert self.g3E[1,1].submatrix10 is None
-                assert self.currentE[0,0].submatrix00 is None
-                assert self.currentE[0,0].submatrix11 is None
-                assert self.currentE[1,1].submatrix00 is None
-                assert self.currentE[1,1].submatrix11 is None
+                assert self.g2E[0, 0].submatrix01 is None
+                assert self.g2E[1, 1].submatrix01 is None
+                assert self.g3E[0, 0].submatrix01 is None
+                assert self.g3E[1, 1].submatrix01 is None
+                assert self.g2E[0, 0].submatrix10 is None
+                assert self.g2E[1, 1].submatrix10 is None
+                assert self.g3E[0, 0].submatrix10 is None
+                assert self.g3E[1, 1].submatrix10 is None
+                assert self.currentE[0, 0].submatrix00 is None
+                assert self.currentE[0, 0].submatrix11 is None
+                assert self.currentE[1, 1].submatrix00 is None
+                assert self.currentE[1, 1].submatrix11 is None
             if self.yLE.submatrix01 is None:
-                dummy = np.zeros(self.nmax*(self.nmax+1), dtype=np.complex128)
+                dummy = np.zeros(self.nmax * (self.nmax + 1), dtype=np.complex128)
                 self.yLE.submatrix01 = dummy
                 self.yLE.submatrix10 = dummy
                 if self.deltaGammaE.submatrix01 is None:
                     self.deltaGammaE.submatrix01 = dummy
                     self.deltaGammaE.submatrix10 = dummy
-                if self.currentE[0,0].submatrix01 is None:
-                    self.currentE[0,0].submatrix01 = dummy
-                    self.currentE[0,0].submatrix10 = dummy
-                if self.currentE[1,1].submatrix01 is None:
-                    self.currentE[1,1].submatrix01 = dummy
-                    self.currentE[1,1].submatrix10 = dummy
+                if self.currentE[0, 0].submatrix01 is None:
+                    self.currentE[0, 0].submatrix01 = dummy
+                    self.currentE[0, 0].submatrix10 = dummy
+                if self.currentE[1, 1].submatrix01 is None:
+                    self.currentE[1, 1].submatrix01 = dummy
+                    self.currentE[1, 1].submatrix10 = dummy
             all_data = [
-                        self.gammaE.submatrix00,
-                        self.zE.submatrix00,
-                        self.deltaGammaLE.submatrix00,
-                        self.g2E[0,0].submatrix00,
-                        self.g2E[1,1].submatrix00,
-                        self.g3E[0,0].submatrix00,
-                        self.g3E[1,1].submatrix00,
-                        self.gammaE.submatrix11,
-                        self.zE.submatrix11,
-                        self.deltaGammaLE.submatrix11,
-                        self.g2E[0,0].submatrix11,
-                        self.g2E[1,1].submatrix11,
-                        self.g3E[0,0].submatrix11,
-                        self.g3E[1,1].submatrix11,
-                        self.gammaLE.submatrix01,
-                        self.gammaLE.submatrix10,
-                        self.deltaGammaE.submatrix01,
-                        self.deltaGammaE.submatrix10,
-                        self.yLE.submatrix01,
-                        self.yLE.submatrix10,
-                        self.currentE[0,0].submatrix01,
-                        self.currentE[0,0].submatrix10,
-                        self.currentE[1,1].submatrix01,
-                        self.currentE[1,1].submatrix10,
-                        self.g2E[0,1].values,
-                        self.g2E[1,0].values,
-                        self.g3E[0,1].values,
-                        self.g3E[1,0].values,
-                        self.currentE[0,1].values,
-                        self.currentE[1,0].values,
-                    ]
+                self.gammaE.submatrix00,
+                self.zE.submatrix00,
+                self.deltaGammaLE.submatrix00,
+                self.g2E[0, 0].submatrix00,
+                self.g2E[1, 1].submatrix00,
+                self.g3E[0, 0].submatrix00,
+                self.g3E[1, 1].submatrix00,
+                self.gammaE.submatrix11,
+                self.zE.submatrix11,
+                self.deltaGammaLE.submatrix11,
+                self.g2E[0, 0].submatrix11,
+                self.g2E[1, 1].submatrix11,
+                self.g3E[0, 0].submatrix11,
+                self.g3E[1, 1].submatrix11,
+                self.gammaLE.submatrix01,
+                self.gammaLE.submatrix10,
+                self.deltaGammaE.submatrix01,
+                self.deltaGammaE.submatrix10,
+                self.yLE.submatrix01,
+                self.yLE.submatrix10,
+                self.currentE[0, 0].submatrix01,
+                self.currentE[0, 0].submatrix10,
+                self.currentE[1, 1].submatrix01,
+                self.currentE[1, 1].submatrix10,
+                self.g2E[0, 1].values,
+                self.g2E[1, 0].values,
+                self.g3E[0, 1].values,
+                self.g3E[1, 0].values,
+                self.currentE[0, 1].values,
+                self.currentE[1, 0].values,
+            ]
             if self.include_Ga:
                 try:
                     all_data += [
-                            self.ga_scalarE.submatrix00,
-                            self.ga_scalarE.submatrix11,
-                            ]
+                        self.ga_scalarE.submatrix00,
+                        self.ga_scalarE.submatrix11,
+                    ]
                 except AttributeError:
                     all_data += [
-                            self.gaE[0,0].submatrix00,
-                            self.gaE[1,1].submatrix00,
-                            self.gaE[0,0].submatrix11,
-                            self.gaE[1,1].submatrix11,
-                            self.gaE[0,1].values,
-                            self.gaE[1,0].values,
-                            ]
+                        self.gaE[0, 0].submatrix00,
+                        self.gaE[1, 1].submatrix00,
+                        self.gaE[0, 0].submatrix11,
+                        self.gaE[1, 1].submatrix11,
+                        self.gaE[0, 1].values,
+                        self.gaE[1, 0].values,
+                    ]
             return np.concatenate(all_data, axis=None)
         elif self.compact == 2:
             if settings.CHECK_SYMMETRIES:
@@ -2582,57 +3027,68 @@ class Kondo:
                 assert self.g2E.symmetry == -1
                 assert self.g3E.symmetry == 1
                 assert self.currentE.symmetry == 1
-                assert self.g2E[0,0].submatrix01 is None
-                assert self.g3E[0,0].submatrix01 is None
-                assert self.g2E[0,0].submatrix10 is None
-                assert self.g3E[0,0].submatrix10 is None
-                assert self.currentE[0,0].submatrix00 is None
-                assert self.currentE[0,0].submatrix11 is None
+                assert self.g2E[0, 0].submatrix01 is None
+                assert self.g3E[0, 0].submatrix01 is None
+                assert self.g2E[0, 0].submatrix10 is None
+                assert self.g3E[0, 0].submatrix10 is None
+                assert self.currentE[0, 0].submatrix00 is None
+                assert self.currentE[0, 0].submatrix11 is None
             if self.yLE.submatrix01 is None:
-                dummy = np.zeros(self.nmax*(self.nmax+1), dtype=np.complex128)
+                dummy = np.zeros(self.nmax * (self.nmax + 1), dtype=np.complex128)
                 self.yLE.submatrix01 = dummy
                 self.yLE.submatrix10 = dummy
                 if self.deltaGammaE.submatrix01 is None:
                     self.deltaGammaE.submatrix01 = dummy
                     self.deltaGammaE.submatrix10 = dummy
-                if self.currentE[0,0].submatrix01 is None:
-                    self.currentE[0,0].submatrix01 = dummy
-                    self.currentE[0,0].submatrix10 = dummy
-            pack_flat = lambda x, sym: (x.reshape(-1)[:(x.size+1)//2] + sym*x.reshape(-1)[:x.size//2-1:-1].conjugate())/2
+                if self.currentE[0, 0].submatrix01 is None:
+                    self.currentE[0, 0].submatrix01 = dummy
+                    self.currentE[0, 0].submatrix10 = dummy
+            pack_flat = (
+                lambda x, sym: (
+                    x.reshape(-1)[: (x.size + 1) // 2]
+                    + sym * x.reshape(-1)[: x.size // 2 - 1 : -1].conjugate()
+                )
+                / 2
+            )
             all_data = [
-                        pack_flat(self.gammaE.submatrix00, -1),
-                        pack_flat(self.zE.submatrix00, -1),
-                        pack_flat(self.deltaGammaLE.submatrix00, -1),
-                        pack_flat(self.g2E[0,0].submatrix00, -1),
-                        pack_flat(self.g3E[0,0].submatrix00, 1),
-                        pack_flat(self.gammaE.submatrix11, -1),
-                        pack_flat(self.zE.submatrix11, -1),
-                        pack_flat(self.deltaGammaLE.submatrix11, -1),
-                        pack_flat(self.g2E[0,0].submatrix11, -1),
-                        pack_flat(self.g3E[0,0].submatrix11, 1),
-                        pack_flat(self.gammaLE.submatrix01, -1),
-                        pack_flat(self.gammaLE.submatrix10, -1),
-                        pack_flat(self.deltaGammaE.submatrix01, -1),
-                        pack_flat(self.deltaGammaE.submatrix10, -1),
-                        pack_flat(self.yLE.submatrix01, 1),
-                        pack_flat(self.yLE.submatrix10, 1),
-                        pack_flat(self.currentE[0,0].submatrix01, 1),
-                        pack_flat(self.currentE[0,0].submatrix10, 1),
-                        self.g2E[0,1].values,
-                        self.g3E[0,1].values,
-                        self.currentE[0,1].values,
-                    ]
+                pack_flat(self.gammaE.submatrix00, -1),
+                pack_flat(self.zE.submatrix00, -1),
+                pack_flat(self.deltaGammaLE.submatrix00, -1),
+                pack_flat(self.g2E[0, 0].submatrix00, -1),
+                pack_flat(self.g3E[0, 0].submatrix00, 1),
+                pack_flat(self.gammaE.submatrix11, -1),
+                pack_flat(self.zE.submatrix11, -1),
+                pack_flat(self.deltaGammaLE.submatrix11, -1),
+                pack_flat(self.g2E[0, 0].submatrix11, -1),
+                pack_flat(self.g3E[0, 0].submatrix11, 1),
+                pack_flat(self.gammaLE.submatrix01, -1),
+                pack_flat(self.gammaLE.submatrix10, -1),
+                pack_flat(self.deltaGammaE.submatrix01, -1),
+                pack_flat(self.deltaGammaE.submatrix10, -1),
+                pack_flat(self.yLE.submatrix01, 1),
+                pack_flat(self.yLE.submatrix10, 1),
+                pack_flat(self.currentE[0, 0].submatrix01, 1),
+                pack_flat(self.currentE[0, 0].submatrix10, 1),
+                self.g2E[0, 1].values,
+                self.g3E[0, 1].values,
+                self.currentE[0, 1].values,
+            ]
             if self.include_Ga:
                 assert self.ga_scalarE.submatrix01 is None
                 assert self.ga_scalarE.submatrix10 is None
-                assert np.allclose(self.ga_scalarE.submatrix00.flat, self.ga_scalarE.submatrix00.flat[::-1].conjugate())
-                assert np.allclose(self.ga_scalarE.submatrix11.flat, self.ga_scalarE.submatrix11.flat[::-1].conjugate())
+                assert np.allclose(
+                    self.ga_scalarE.submatrix00.flat,
+                    self.ga_scalarE.submatrix00.flat[::-1].conjugate(),
+                )
+                assert np.allclose(
+                    self.ga_scalarE.submatrix11.flat,
+                    self.ga_scalarE.submatrix11.flat[::-1].conjugate(),
+                )
                 all_data += [
-                        pack_flat(self.ga_scalarE.submatrix00, 1),
-                        pack_flat(self.ga_scalarE.submatrix11, 1),
-                        ]
+                    pack_flat(self.ga_scalarE.submatrix00, 1),
+                    pack_flat(self.ga_scalarE.submatrix11, 1),
+                ]
             return np.concatenate(all_data, axis=None)
-
 
     def packFlattenedDerivativesMinimal(self):
         """
@@ -2649,10 +3105,10 @@ class Kondo:
         """
         if self.compact == 0:
             all_data = [
-                        self.gammaE.values,
-                        self.zE.values,
-                        *(g.values for g in self.g2E.data.flat),
-                    ]
+                self.gammaE.values,
+                self.zE.values,
+                *(g.values for g in self.g2E.data.flat),
+            ]
             if self.include_Ga:
                 try:
                     all_data.append(self.ga_scalarE.values)
@@ -2665,37 +3121,37 @@ class Kondo:
                 assert self.gammaE.submatrix10 is None
                 assert self.zE.submatrix01 is None
                 assert self.zE.submatrix10 is None
-                assert self.g2E[0,0].submatrix01 is None
-                assert self.g2E[1,1].submatrix01 is None
-                assert self.g2E[0,0].submatrix10 is None
-                assert self.g2E[1,1].submatrix10 is None
+                assert self.g2E[0, 0].submatrix01 is None
+                assert self.g2E[1, 1].submatrix01 is None
+                assert self.g2E[0, 0].submatrix10 is None
+                assert self.g2E[1, 1].submatrix10 is None
             all_data = [
-                        self.gammaE.submatrix00,
-                        self.zE.submatrix00,
-                        self.g2E[0,0].submatrix00,
-                        self.g2E[1,1].submatrix00,
-                        self.gammaE.submatrix11,
-                        self.zE.submatrix11,
-                        self.g2E[0,0].submatrix11,
-                        self.g2E[1,1].submatrix11,
-                        self.g2E[0,1].values,
-                        self.g2E[1,0].values,
-                    ]
+                self.gammaE.submatrix00,
+                self.zE.submatrix00,
+                self.g2E[0, 0].submatrix00,
+                self.g2E[1, 1].submatrix00,
+                self.gammaE.submatrix11,
+                self.zE.submatrix11,
+                self.g2E[0, 0].submatrix11,
+                self.g2E[1, 1].submatrix11,
+                self.g2E[0, 1].values,
+                self.g2E[1, 0].values,
+            ]
             if self.include_Ga:
                 try:
                     all_data += [
-                            self.ga_scalarE.submatrix00,
-                            self.ga_scalarE.submatrix11,
-                            ]
+                        self.ga_scalarE.submatrix00,
+                        self.ga_scalarE.submatrix11,
+                    ]
                 except AttributeError:
                     all_data += [
-                            self.gaE[0,0].submatrix00,
-                            self.gaE[1,1].submatrix00,
-                            self.gaE[0,0].submatrix11,
-                            self.gaE[1,1].submatrix11,
-                            self.gaE[0,1].values,
-                            self.gaE[1,0].values,
-                            ]
+                        self.gaE[0, 0].submatrix00,
+                        self.gaE[1, 1].submatrix00,
+                        self.gaE[0, 0].submatrix11,
+                        self.gaE[1, 1].submatrix11,
+                        self.gaE[0, 1].values,
+                        self.gaE[1, 0].values,
+                    ]
             return np.concatenate(all_data, axis=None)
         elif self.compact == 2:
             if self.include_Ga:
@@ -2708,19 +3164,27 @@ class Kondo:
                 assert self.zE.submatrix01 is None
                 assert self.zE.submatrix10 is None
                 assert self.g2E.symmetry == -1
-                assert self.g2E[0,0].submatrix01 is None
-                assert self.g2E[0,0].submatrix10 is None
-            pack_flat = lambda x, sym: (x.reshape(-1)[:(x.size+1)//2] + sym*x.reshape(-1)[:x.size//2-1:-1].conjugate())/2
-            return np.concatenate((
-                        pack_flat(self.gammaE.submatrix00, -1),
-                        pack_flat(self.zE.submatrix00, -1),
-                        pack_flat(self.g2E[0,0].submatrix00, -1),
-                        pack_flat(self.gammaE.submatrix11, -1),
-                        pack_flat(self.zE.submatrix11, -1),
-                        pack_flat(self.g2E[0,0].submatrix11, -1),
-                        self.g2E[0,1].values,
-                ), axis=None)
-
+                assert self.g2E[0, 0].submatrix01 is None
+                assert self.g2E[0, 0].submatrix10 is None
+            pack_flat = (
+                lambda x, sym: (
+                    x.reshape(-1)[: (x.size + 1) // 2]
+                    + sym * x.reshape(-1)[: x.size // 2 - 1 : -1].conjugate()
+                )
+                / 2
+            )
+            return np.concatenate(
+                (
+                    pack_flat(self.gammaE.submatrix00, -1),
+                    pack_flat(self.zE.submatrix00, -1),
+                    pack_flat(self.g2E[0, 0].submatrix00, -1),
+                    pack_flat(self.gammaE.submatrix11, -1),
+                    pack_flat(self.zE.submatrix11, -1),
+                    pack_flat(self.g2E[0, 0].submatrix11, -1),
+                    self.g2E[0, 1].values,
+                ),
+                axis=None,
+            )
 
     def packFlattenedValues(self):
         """
@@ -2742,16 +3206,16 @@ class Kondo:
         """
         if self.compact == 0:
             all_data = [
-                        self.gamma.values,
-                        self.z.values,
-                        self.deltaGamma.values,
-                        *(g.values for g in self.g2.data.flat),
-                        *(g.values for g in self.g3.data.flat),
-                        *(i.values for i in self.current.data.flat),
-                        self.deltaGammaL.values,
-                        self.gammaL.values,
-                        self.yL.values,
-                    ]
+                self.gamma.values,
+                self.z.values,
+                self.deltaGamma.values,
+                *(g.values for g in self.g2.data.flat),
+                *(g.values for g in self.g3.data.flat),
+                *(i.values for i in self.current.data.flat),
+                self.deltaGammaL.values,
+                self.gammaL.values,
+                self.yL.values,
+            ]
             if self.include_Ga:
                 try:
                     all_data.append(self.ga_scalar.values)
@@ -2772,65 +3236,65 @@ class Kondo:
                 assert self.deltaGamma.submatrix11 is None
                 assert self.yL.submatrix00 is None
                 assert self.yL.submatrix11 is None
-                assert self.g2[0,0].submatrix01 is None
-                assert self.g2[1,1].submatrix01 is None
-                assert self.g3[0,0].submatrix01 is None
-                assert self.g3[1,1].submatrix01 is None
-                assert self.g2[0,0].submatrix10 is None
-                assert self.g2[1,1].submatrix10 is None
-                assert self.g3[0,0].submatrix10 is None
-                assert self.g3[1,1].submatrix10 is None
-                assert self.current[0,0].submatrix00 is None
-                assert self.current[0,0].submatrix11 is None
-                assert self.current[1,1].submatrix00 is None
-                assert self.current[1,1].submatrix11 is None
+                assert self.g2[0, 0].submatrix01 is None
+                assert self.g2[1, 1].submatrix01 is None
+                assert self.g3[0, 0].submatrix01 is None
+                assert self.g3[1, 1].submatrix01 is None
+                assert self.g2[0, 0].submatrix10 is None
+                assert self.g2[1, 1].submatrix10 is None
+                assert self.g3[0, 0].submatrix10 is None
+                assert self.g3[1, 1].submatrix10 is None
+                assert self.current[0, 0].submatrix00 is None
+                assert self.current[0, 0].submatrix11 is None
+                assert self.current[1, 1].submatrix00 is None
+                assert self.current[1, 1].submatrix11 is None
             all_data = [
-                        self.gamma.submatrix00,
-                        self.z.submatrix00,
-                        self.deltaGammaL.submatrix00,
-                        self.g2[0,0].submatrix00,
-                        self.g2[1,1].submatrix00,
-                        self.g3[0,0].submatrix00,
-                        self.g3[1,1].submatrix00,
-                        self.gamma.submatrix11,
-                        self.z.submatrix11,
-                        self.deltaGammaL.submatrix11,
-                        self.g2[0,0].submatrix11,
-                        self.g2[1,1].submatrix11,
-                        self.g3[0,0].submatrix11,
-                        self.g3[1,1].submatrix11,
-                        self.gammaL.submatrix01,
-                        self.gammaL.submatrix10,
-                        self.deltaGamma.submatrix01,
-                        self.deltaGamma.submatrix10,
-                        self.yL.submatrix01,
-                        self.yL.submatrix10,
-                        self.current[0,0].submatrix01,
-                        self.current[0,0].submatrix10,
-                        self.current[1,1].submatrix01,
-                        self.current[1,1].submatrix10,
-                        self.g2[0,1].values,
-                        self.g2[1,0].values,
-                        self.g3[0,1].values,
-                        self.g3[1,0].values,
-                        self.current[0,1].values,
-                        self.current[1,0].values,
-                    ]
+                self.gamma.submatrix00,
+                self.z.submatrix00,
+                self.deltaGammaL.submatrix00,
+                self.g2[0, 0].submatrix00,
+                self.g2[1, 1].submatrix00,
+                self.g3[0, 0].submatrix00,
+                self.g3[1, 1].submatrix00,
+                self.gamma.submatrix11,
+                self.z.submatrix11,
+                self.deltaGammaL.submatrix11,
+                self.g2[0, 0].submatrix11,
+                self.g2[1, 1].submatrix11,
+                self.g3[0, 0].submatrix11,
+                self.g3[1, 1].submatrix11,
+                self.gammaL.submatrix01,
+                self.gammaL.submatrix10,
+                self.deltaGamma.submatrix01,
+                self.deltaGamma.submatrix10,
+                self.yL.submatrix01,
+                self.yL.submatrix10,
+                self.current[0, 0].submatrix01,
+                self.current[0, 0].submatrix10,
+                self.current[1, 1].submatrix01,
+                self.current[1, 1].submatrix10,
+                self.g2[0, 1].values,
+                self.g2[1, 0].values,
+                self.g3[0, 1].values,
+                self.g3[1, 0].values,
+                self.current[0, 1].values,
+                self.current[1, 0].values,
+            ]
             if self.include_Ga:
                 try:
                     all_data += [
-                            self.ga_scalar.submatrix00,
-                            self.ga_scalar.submatrix11,
-                            ]
+                        self.ga_scalar.submatrix00,
+                        self.ga_scalar.submatrix11,
+                    ]
                 except AttributeError:
                     all_data += [
-                            self.ga[0,0].submatrix00,
-                            self.ga[1,1].submatrix00,
-                            self.ga[0,0].submatrix11,
-                            self.ga[1,1].submatrix11,
-                            self.ga[0,1].values,
-                            self.ga[1,0].values,
-                            ]
+                        self.ga[0, 0].submatrix00,
+                        self.ga[1, 1].submatrix00,
+                        self.ga[0, 0].submatrix11,
+                        self.ga[1, 1].submatrix11,
+                        self.ga[0, 1].values,
+                        self.ga[1, 0].values,
+                    ]
             return np.concatenate(all_data, axis=None)
         elif self.compact == 2:
             if settings.CHECK_SYMMETRIES:
@@ -2855,47 +3319,52 @@ class Kondo:
                 assert self.g2.symmetry == 1
                 assert self.g3.symmetry == -1
                 assert self.current.symmetry == -1
-                assert self.g2[0,0].submatrix01 is None
-                assert self.g3[0,0].submatrix01 is None
-                assert self.g2[0,0].submatrix10 is None
-                assert self.g3[0,0].submatrix10 is None
-                assert self.current[0,0].submatrix00 is None
-                assert self.current[0,0].submatrix11 is None
-            pack_flat = lambda x, sym: (x.reshape(-1)[:(x.size+1)//2] + sym*x.reshape(-1)[:x.size//2-1:-1].conjugate())/2
+                assert self.g2[0, 0].submatrix01 is None
+                assert self.g3[0, 0].submatrix01 is None
+                assert self.g2[0, 0].submatrix10 is None
+                assert self.g3[0, 0].submatrix10 is None
+                assert self.current[0, 0].submatrix00 is None
+                assert self.current[0, 0].submatrix11 is None
+            pack_flat = (
+                lambda x, sym: (
+                    x.reshape(-1)[: (x.size + 1) // 2]
+                    + sym * x.reshape(-1)[: x.size // 2 - 1 : -1].conjugate()
+                )
+                / 2
+            )
             all_data = [
-                        pack_flat(self.gamma.submatrix00, 1),
-                        pack_flat(self.z.submatrix00, 1),
-                        pack_flat(self.deltaGammaL.submatrix00, 1),
-                        pack_flat(self.g2[0,0].submatrix00, 1),
-                        pack_flat(self.g3[0,0].submatrix00, -1),
-                        pack_flat(self.gamma.submatrix11, 1),
-                        pack_flat(self.z.submatrix11, 1),
-                        pack_flat(self.deltaGammaL.submatrix11, 1),
-                        pack_flat(self.g2[0,0].submatrix11, 1),
-                        pack_flat(self.g3[0,0].submatrix11, -1),
-                        pack_flat(self.gammaL.submatrix01, 1),
-                        pack_flat(self.gammaL.submatrix10, 1),
-                        pack_flat(self.deltaGamma.submatrix01, 1),
-                        pack_flat(self.deltaGamma.submatrix10, 1),
-                        pack_flat(self.yL.submatrix01, -1),
-                        pack_flat(self.yL.submatrix10, -1),
-                        pack_flat(self.current[0,0].submatrix01, -1),
-                        pack_flat(self.current[0,0].submatrix10, -1),
-                        self.g2[0,1].values,
-                        self.g3[0,1].values,
-                        self.current[0,1].values,
-                    ]
+                pack_flat(self.gamma.submatrix00, 1),
+                pack_flat(self.z.submatrix00, 1),
+                pack_flat(self.deltaGammaL.submatrix00, 1),
+                pack_flat(self.g2[0, 0].submatrix00, 1),
+                pack_flat(self.g3[0, 0].submatrix00, -1),
+                pack_flat(self.gamma.submatrix11, 1),
+                pack_flat(self.z.submatrix11, 1),
+                pack_flat(self.deltaGammaL.submatrix11, 1),
+                pack_flat(self.g2[0, 0].submatrix11, 1),
+                pack_flat(self.g3[0, 0].submatrix11, -1),
+                pack_flat(self.gammaL.submatrix01, 1),
+                pack_flat(self.gammaL.submatrix10, 1),
+                pack_flat(self.deltaGamma.submatrix01, 1),
+                pack_flat(self.deltaGamma.submatrix10, 1),
+                pack_flat(self.yL.submatrix01, -1),
+                pack_flat(self.yL.submatrix10, -1),
+                pack_flat(self.current[0, 0].submatrix01, -1),
+                pack_flat(self.current[0, 0].submatrix10, -1),
+                self.g2[0, 1].values,
+                self.g3[0, 1].values,
+                self.current[0, 1].values,
+            ]
             if self.include_Ga:
                 if settings.CHECK_SYMMETRIES:
                     assert self.ga_scalar.symmetry == -1
                     assert self.ga_scalar.submatrix01 is None
                     assert self.ga_scalar.submatrix10 is None
                 all_data += [
-                        pack_flat(self.ga_scalar.submatrix00, -1),
-                        pack_flat(self.ga_scalar.submatrix11, -1),
-                        ]
+                    pack_flat(self.ga_scalar.submatrix00, -1),
+                    pack_flat(self.ga_scalar.submatrix11, -1),
+                ]
             return np.concatenate(all_data, axis=None)
-
 
     def packFlattenedValuesMinimal(self):
         """
@@ -2912,10 +3381,10 @@ class Kondo:
         """
         if self.compact == 0:
             all_data = [
-                        self.gamma.values,
-                        self.z.values,
-                        *(g.values for g in self.g2.data.flat),
-                    ]
+                self.gamma.values,
+                self.z.values,
+                *(g.values for g in self.g2.data.flat),
+            ]
             if self.include_Ga:
                 try:
                     all_data.append(self.ga_scalar.values)
@@ -2928,37 +3397,37 @@ class Kondo:
                 assert self.gamma.submatrix10 is None
                 assert self.z.submatrix01 is None
                 assert self.z.submatrix10 is None
-                assert self.g2[0,0].submatrix01 is None
-                assert self.g2[1,1].submatrix01 is None
-                assert self.g2[0,0].submatrix10 is None
-                assert self.g2[1,1].submatrix10 is None
+                assert self.g2[0, 0].submatrix01 is None
+                assert self.g2[1, 1].submatrix01 is None
+                assert self.g2[0, 0].submatrix10 is None
+                assert self.g2[1, 1].submatrix10 is None
             all_data = [
-                        self.gamma.submatrix00,
-                        self.z.submatrix00,
-                        self.g2[0,0].submatrix00,
-                        self.g2[1,1].submatrix00,
-                        self.gamma.submatrix11,
-                        self.z.submatrix11,
-                        self.g2[0,0].submatrix11,
-                        self.g2[1,1].submatrix11,
-                        self.g2[0,1].values,
-                        self.g2[1,0].values,
-                    ]
+                self.gamma.submatrix00,
+                self.z.submatrix00,
+                self.g2[0, 0].submatrix00,
+                self.g2[1, 1].submatrix00,
+                self.gamma.submatrix11,
+                self.z.submatrix11,
+                self.g2[0, 0].submatrix11,
+                self.g2[1, 1].submatrix11,
+                self.g2[0, 1].values,
+                self.g2[1, 0].values,
+            ]
             if self.include_Ga:
                 try:
                     all_data += [
-                            self.ga_scalar.submatrix00,
-                            self.ga_scalar.submatrix11,
-                            ]
+                        self.ga_scalar.submatrix00,
+                        self.ga_scalar.submatrix11,
+                    ]
                 except AttributeError:
                     all_data += [
-                            self.ga[0,0].submatrix00,
-                            self.ga[1,1].submatrix00,
-                            self.ga[0,0].submatrix11,
-                            self.ga[1,1].submatrix11,
-                            self.ga[0,1].values,
-                            self.ga[1,0].values,
-                            ]
+                        self.ga[0, 0].submatrix00,
+                        self.ga[1, 1].submatrix00,
+                        self.ga[0, 0].submatrix11,
+                        self.ga[1, 1].submatrix11,
+                        self.ga[0, 1].values,
+                        self.ga[1, 0].values,
+                    ]
             return np.concatenate(all_data, axis=None)
         elif self.compact == 2:
             if self.include_Ga:
@@ -2971,26 +3440,33 @@ class Kondo:
                 assert self.z.submatrix01 is None
                 assert self.z.submatrix10 is None
                 assert self.g2.symmetry == 1
-                assert self.g2[0,0].submatrix01 is None
-                assert self.g2[0,0].submatrix10 is None
-            pack_flat = lambda x, sym: (x.reshape(-1)[:(x.size+1)//2] + sym*x.reshape(-1)[:x.size//2-1:-1].conjugate())/2
-            return np.concatenate((
-                        pack_flat(self.gamma.submatrix00, 1),
-                        pack_flat(self.z.submatrix00, 1),
-                        pack_flat(self.g2[0,0].submatrix00, 1),
-                        pack_flat(self.gamma.submatrix11, 1),
-                        pack_flat(self.z.submatrix11, 1),
-                        pack_flat(self.g2[0,0].submatrix11, 1),
-                        self.g2[0,1].values,
-                ), axis=None)
-
+                assert self.g2[0, 0].submatrix01 is None
+                assert self.g2[0, 0].submatrix10 is None
+            pack_flat = (
+                lambda x, sym: (
+                    x.reshape(-1)[: (x.size + 1) // 2]
+                    + sym * x.reshape(-1)[: x.size // 2 - 1 : -1].conjugate()
+                )
+                / 2
+            )
+            return np.concatenate(
+                (
+                    pack_flat(self.gamma.submatrix00, 1),
+                    pack_flat(self.z.submatrix00, 1),
+                    pack_flat(self.g2[0, 0].submatrix00, 1),
+                    pack_flat(self.gamma.submatrix11, 1),
+                    pack_flat(self.z.submatrix11, 1),
+                    pack_flat(self.g2[0, 0].submatrix11, 1),
+                    self.g2[0, 1].values,
+                ),
+                axis=None,
+            )
 
     def hash(self):
         """Generate hash based on all Floquet matrix data"""
         data = self.packFlattenedValues()
         data.flags["WRITEABLE"] = False
         return hashlib.sha1(data.data).hexdigest()
-
 
     def odeFunctionIm(self, imenergy, flattened_values):
         """
@@ -3019,7 +3495,11 @@ class Kondo:
         :meth:`~odeFunctionRe`
         """
         try:
-            if self.save_filename and self.save_iterations > 0 and self.iterations % self.save_iterations == 0:
+            if (
+                self.save_filename
+                and self.save_iterations > 0
+                and self.iterations % self.save_iterations == 0
+            ):
                 try:
                     self.save_compact()
                 except:
@@ -3029,7 +3509,7 @@ class Kondo:
         except:
             settings.logger.exception("Failed trying to save intermediate result:")
 
-        self.global_properties.energy = self.energy.real + 1j*imenergy
+        self.global_properties.energy = self.energy.real + 1j * imenergy
 
         self.unpackFlattenedValues(flattened_values)
 
@@ -3037,14 +3517,14 @@ class Kondo:
         try:
             self.updateRGequations()
         except KeyboardInterrupt as error:
-            settings.logger.critical('Interrupted at Im(E) = %e'%imenergy)
+            settings.logger.critical("Interrupted at Im(E) = %e" % imenergy)
             try:
                 self.ir_cutoff = max(self.ir_cutoff, imenergy)
             except AttributeError:
                 self.ir_cutoff = imenergy
             raise error
         except Exception as error:
-            settings.logger.exception('Unhandled error at Im(E) = %e'%imenergy)
+            settings.logger.exception("Unhandled error at Im(E) = %e" % imenergy)
             try:
                 self.ir_cutoff = max(self.ir_cutoff, imenergy)
             except AttributeError:
@@ -3053,8 +3533,7 @@ class Kondo:
 
         # Pack values
         # use  d/d(Im E) = i d/dE
-        return 1j*self.packFlattenedDerivatives()
-
+        return 1j * self.packFlattenedDerivatives()
 
     def odeFunctionImMinimal(self, imenergy, flattened_values):
         """
@@ -3082,21 +3561,21 @@ class Kondo:
         --------
         :meth:`~odeFunctionIm`, :meth:`~odeFunctionImMinimal`
         """
-        self.global_properties.energy = self.energy.real + 1j*imenergy
+        self.global_properties.energy = self.energy.real + 1j * imenergy
         self.unpackFlattenedValuesMinimal(flattened_values)
 
         # Evaluate RG equations
         try:
             self.updateRGequationsMinimal()
         except KeyboardInterrupt as error:
-            settings.logger.critical('Interrupted at Im(E) = %e'%imenergy)
+            settings.logger.critical("Interrupted at Im(E) = %e" % imenergy)
             try:
                 self.ir_cutoff = max(self.ir_cutoff, imenergy)
             except AttributeError:
                 self.ir_cutoff = imenergy
             raise error
         except Exception as error:
-            settings.logger.exception('Unhandled error at Im(E) = %e'%imenergy)
+            settings.logger.exception("Unhandled error at Im(E) = %e" % imenergy)
             try:
                 self.ir_cutoff = max(self.ir_cutoff, imenergy)
             except AttributeError:
@@ -3104,8 +3583,7 @@ class Kondo:
             raise error
         # Pack values
         # use  d/d(Im E) = i d/dE
-        return 1j*self.packFlattenedDerivativesMinimal()
-
+        return 1j * self.packFlattenedDerivativesMinimal()
 
     def odeFunctionRe(self, reenergy, flattened_values):
         """
@@ -3133,13 +3611,17 @@ class Kondo:
         --------
         :meth:`~odeFunctionIm`
         """
-        if self.save_filename and self.save_iterations > 0 and self.iterations % self.save_iterations == 0:
+        if (
+            self.save_filename
+            and self.save_iterations > 0
+            and self.iterations % self.save_iterations == 0
+        ):
             try:
                 self.save_compact()
             except:
-                settings.logger.exception('Failed to save intermediate result:')
+                settings.logger.exception("Failed to save intermediate result:")
 
-        self.global_properties.energy = reenergy + 1j*self.energy.imag
+        self.global_properties.energy = reenergy + 1j * self.energy.imag
 
         self.unpackFlattenedValues(flattened_values)
 
@@ -3147,17 +3629,22 @@ class Kondo:
         try:
             self.updateRGequations()
         except KeyboardInterrupt as error:
-            settings.logger.critical('Interrupted at Re(E) = %g, Im(E) = %g'%(reenergy, energy0.imag))
+            settings.logger.critical(
+                "Interrupted at Re(E) = %g, Im(E) = %g" % (reenergy, energy0.imag)
+            )
             raise error
         except:
-            settings.logger.exception('Unhandled error at Re(E) = %g, Im(E) = %g'%(reenergy, energy0.imag))
+            settings.logger.exception(
+                "Unhandled error at Re(E) = %g, Im(E) = %g" % (reenergy, energy0.imag)
+            )
             raise error
 
         # Pack values
         return self.packFlattenedDerivatives()
 
-
-    def solveOdeIm(self, eiminit, eimfinal, init_values=None, only_final=False, **solveopts):
+    def solveOdeIm(
+        self, eiminit, eimfinal, init_values=None, only_final=False, **solveopts
+    ):
         """
         Solve RG equations in the direction of the imaginary axis
 
@@ -3190,16 +3677,17 @@ class Kondo:
         if init_values is None:
             init_values = self.packFlattenedValues()
         output = solve_ivp(
-                self.odeFunctionIm,
-                (eiminit, eimfinal),
-                init_values,
-                t_eval = solveopts.pop("t_eval", ((eimfinal,) if only_final else None)),
-                **solveopts
-            )
+            self.odeFunctionIm,
+            (eiminit, eimfinal),
+            init_values,
+            t_eval=solveopts.pop("t_eval", ((eimfinal,) if only_final else None)),
+            **solveopts,
+        )
         return output
 
-
-    def solveOdeRe(self, reEinit, reEfinal, init_values=None, only_final=False, **solveopts):
+    def solveOdeRe(
+        self, reEinit, reEfinal, init_values=None, only_final=False, **solveopts
+    ):
         """
         Solve RG equations in the direction of the real axis
 
@@ -3232,14 +3720,13 @@ class Kondo:
         if init_values is None:
             init_values = self.packFlattenedValues()
         output = solve_ivp(
-                self.odeFunctionRe,
-                (reEinit, reEfinal),
-                init_values,
-                t_eval = solveopts.pop("t_eval", ((eimfinal,) if only_final else None)),
-                **solveopts
-            )
+            self.odeFunctionRe,
+            (reEinit, reEfinal),
+            init_values,
+            t_eval=solveopts.pop("t_eval", ((eimfinal,) if only_final else None)),
+            **solveopts,
+        )
         return output
-
 
     def findPole(self, **solveopts):
         """
@@ -3256,19 +3743,18 @@ class Kondo:
         assert abs(self.energy.real) < 1e-12
         init_values = self.packFlattenedValuesMinimal()
         raise NotImplementedError
-        idx = 0 # TODO
+        idx = 0  # TODO
         event = lambda t, y: t + y[idx] - 1e-3
         output = solve_ivp(
-                self.odeFunctionImMinimal,
-                (self.energy.imag, -1e6),
-                init_values,
-                events = event,
-                t_eval = (),
-                **solveopts
-            )
+            self.odeFunctionImMinimal,
+            (self.energy.imag, -1e6),
+            init_values,
+            events=event,
+            t_eval=(),
+            **solveopts,
+        )
         self.pole = -output.t[-1]
         return self.pole, output
-
 
     def save_compact(self, values, compressed=False):
         """
@@ -3276,9 +3762,13 @@ class Kondo:
 
         Automatically save current state of the RG flow in the most compact
         form. The file name will be
+
             self.save_filename % self.iterations
+
         or
+
             self.save_filename.format(self.iterations).
+
         In a computationally expensive RG flow this allows saving intermediate
         steps of the RG flow.
 
@@ -3291,16 +3781,15 @@ class Kondo:
             compress the file when saving
         """
         try:
-            filename = self.save_filename%self.iterations
+            filename = self.save_filename % self.iterations
         except TypeError:
             filename = self.save_filename.format(self.iterations)
         (np.savez_compressed if compressed else np.savez)(
-                filename,
-                values = values,
-                energy = self.energy,
-                compact = self.compact,
-                )
-
+            filename,
+            values=values,
+            energy=self.energy,
+            compact=self.compact,
+        )
 
     def load_compact(self, filename):
         """
@@ -3312,6 +3801,6 @@ class Kondo:
             path to saved file
         """
         data = np.load(filename)
-        assert data['compact'] == self.compact
-        self.unpackFlattenedValues(data['values'])
-        self.global_properties.energy = data['energy']
+        assert data["compact"] == self.compact
+        self.unpackFlattenedValues(data["values"])
+        self.global_properties.energy = data["energy"]

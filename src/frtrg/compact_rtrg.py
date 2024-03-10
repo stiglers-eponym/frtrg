@@ -12,7 +12,10 @@ See Also
 rtrg.py
 """
 
-from .rtrg import *
+import numpy as np
+from numbers import Number
+from . import settings
+from .rtrg import RGfunction, rtrg_c
 
 OVERWRITE_LEFT = bytes((1,))
 OVERWRITE_RIGHT = bytes((2,))
@@ -24,12 +27,15 @@ class SymRGfunction(RGfunction):
     Subclass of :class:`RGfunction` for Floquet matrices representing
     functions which in time-domain fulfill :math:`f(t + T/2) = \pm f(t)`.
     """
-    def __init__(self, global_properties, values, symmetry=0, diag=None, offdiag=None, **kwargs):
+
+    def __init__(
+        self, global_properties, values, symmetry=0, diag=None, offdiag=None, **kwargs
+    ):
         self.global_properties = global_properties
         self.symmetry = symmetry
         self.energy_shifted_copies = {}
         self.voltage_shifts = 0
-        for (key, value) in kwargs.items():
+        for key, value in kwargs.items():
             setattr(self, key, value)
         assert global_properties.voltage_branches == 0
 
@@ -37,11 +43,11 @@ class SymRGfunction(RGfunction):
         self.submatrix01 = None
         self.submatrix10 = None
         self.submatrix11 = None
-        for (key, value) in kwargs.items():
+        for key, value in kwargs.items():
             setattr(self, key, value)
-        if (type(values) == str and values == 'identity'):
+        if type(values) == str and values == "identity":
             self.symmetry = 1
-            self.submatrix00 = np.identity(self.nmax+1, dtype=np.complex128)
+            self.submatrix00 = np.identity(self.nmax + 1, dtype=np.complex128)
             self.submatrix11 = np.identity(self.nmax, dtype=np.complex128)
         elif values is not None:
             if diag is None or offdiag is None:
@@ -53,47 +59,47 @@ class SymRGfunction(RGfunction):
     def fromRGfunction(cls, rgfunc, diag=None, offdiag=None):
         assert isinstance(rgfunc, RGfunction)
         return SymRGfunction(
-                rgfunc.global_properties,
-                rgfunc.values,
-                rgfunc.symmetry,
-                diag,
-                offdiag,
-                )
+            rgfunc.global_properties,
+            rgfunc.values,
+            rgfunc.symmetry,
+            diag,
+            offdiag,
+        )
 
     @property
     def values(self):
-        values = np.zeros((2*self.nmax+1, 2*self.nmax+1), dtype=np.complex128)
+        values = np.zeros((2 * self.nmax + 1, 2 * self.nmax + 1), dtype=np.complex128)
         if self.submatrix00 is not None:
-            values[0::2,0::2] = self.submatrix00
+            values[0::2, 0::2] = self.submatrix00
         if self.submatrix01 is not None:
-            values[0::2,1::2] = self.submatrix01
+            values[0::2, 1::2] = self.submatrix01
         if self.submatrix10 is not None:
-            values[1::2,0::2] = self.submatrix10
+            values[1::2, 0::2] = self.submatrix10
         if self.submatrix11 is not None:
-            values[1::2,1::2] = self.submatrix11
+            values[1::2, 1::2] = self.submatrix11
         return values
 
-    def setValues(self, values, diag:bool, offdiag:bool):
+    def setValues(self, values, diag: bool, offdiag: bool):
         """
         More efficient than setting values by self.values = values if
         it is known which parts are non-zero.
         """
         if diag:
-            self.submatrix00 = values[0::2,0::2]  # (n+1)x(n+1) matrix for +
-            self.submatrix11 = values[1::2,1::2]  #    n x n    matrix for +
+            self.submatrix00 = values[0::2, 0::2]  # (n+1)x(n+1) matrix for +
+            self.submatrix11 = values[1::2, 1::2]  #    n x n    matrix for +
         if offdiag:
-            self.submatrix01 = values[0::2,1::2]  # (n+1)x n    matrix for -
-            self.submatrix10 = values[1::2,0::2]  #    n x(n+1) matrix for -
+            self.submatrix01 = values[0::2, 1::2]  # (n+1)x n    matrix for -
+            self.submatrix10 = values[1::2, 0::2]  #    n x(n+1) matrix for -
 
     @values.setter
     def values(self, values):
         values = np.asarray(values, np.complex128)
         assert values.ndim == 2
-        assert values.shape[0] == values.shape[1] == 2*self.nmax+1
-        self.submatrix00 = values[0::2,0::2]  # (n+1)x(n+1) matrix for +
-        self.submatrix01 = values[0::2,1::2]  # (n+1)x n    matrix for -
-        self.submatrix10 = values[1::2,0::2]  #    n x(n+1) matrix for -
-        self.submatrix11 = values[1::2,1::2]  #    n x n    matrix for +
+        assert values.shape[0] == values.shape[1] == 2 * self.nmax + 1
+        self.submatrix00 = values[0::2, 0::2]  # (n+1)x(n+1) matrix for +
+        self.submatrix01 = values[0::2, 1::2]  # (n+1)x n    matrix for -
+        self.submatrix10 = values[1::2, 0::2]  #    n x(n+1) matrix for -
+        self.submatrix11 = values[1::2, 1::2]  #    n x n    matrix for +
         if np.all(np.abs(self.submatrix00) < 1e-15):
             self.submatrix00 = None
         if np.all(np.abs(self.submatrix01) < 1e-15):
@@ -102,7 +108,9 @@ class SymRGfunction(RGfunction):
             self.submatrix10 = None
         if np.all(np.abs(self.submatrix11) < 1e-15):
             self.submatrix11 = None
-        assert (self.submatrix00 is None and self.submatrix11 is None) or (self.submatrix01 is None and self.submatrix10 is None)
+        assert (self.submatrix00 is None and self.submatrix11 is None) or (
+            self.submatrix01 is None and self.submatrix10 is None
+        )
         self.energy_shifted_copies.clear()
 
     def copy(self):
@@ -110,14 +118,14 @@ class SymRGfunction(RGfunction):
         Copy only values, take a reference to global_properties.
         """
         return SymRGfunction(
-                self.global_properties,
-                values = None,
-                symmetry = self.symmetry,
-                submatrix00 = None if self.submatrix00 is None else self.submatrix00.copy(),
-                submatrix01 = None if self.submatrix01 is None else self.submatrix01.copy(),
-                submatrix10 = None if self.submatrix10 is None else self.submatrix10.copy(),
-                submatrix11 = None if self.submatrix11 is None else self.submatrix11.copy(),
-            )
+            self.global_properties,
+            values=None,
+            symmetry=self.symmetry,
+            submatrix00=None if self.submatrix00 is None else self.submatrix00.copy(),
+            submatrix01=None if self.submatrix01 is None else self.submatrix01.copy(),
+            submatrix10=None if self.submatrix10 is None else self.submatrix10.copy(),
+            submatrix11=None if self.submatrix11 is None else self.submatrix11.copy(),
+        )
 
     def reduced(self, shift=0):
         """
@@ -131,10 +139,14 @@ class SymRGfunction(RGfunction):
 
     def floquetConjugate(self):
         """
-        For a Floquet matrix A(E)_{nm} this returns the C-transform
-            C A(E)_{nm} C = A(-E*)_{-n,-m}
+        For a Floquet matrix :math:`A(E)_{nm}` this returns the C-transform
+
+        .. math::  C A(E)_{nm} C = A(-E*)_{-n,-m}
+
         with the superoperator C defined by
-            C x := x^\dag.
+
+        .. math::  C x := x^\dag.
+
         This uses the symmetry of self if self has a symmetry. If this
         C-transform leaves self invariant, this function will return a
         copy of self, but never a reference to self.
@@ -148,21 +160,30 @@ class SymRGfunction(RGfunction):
             return -self
         assert abs(self.energy.real) < 1e-12
         return SymRGfunction(
-                self.global_properties,
-                values = None,
-                submatrix00 = None if self.submatrix00 is None else np.conjugate(self.submatrix00[::-1,::-1]),
-                submatrix01 = None if self.submatrix01 is None else np.conjugate(self.submatrix01[::-1,::-1]),
-                submatrix10 = None if self.submatrix10 is None else np.conjugate(self.submatrix10[::-1,::-1]),
-                submatrix11 = None if self.submatrix11 is None else np.conjugate(self.submatrix11[::-1,::-1]),
-            )
+            self.global_properties,
+            values=None,
+            submatrix00=None
+            if self.submatrix00 is None
+            else np.conjugate(self.submatrix00[::-1, ::-1]),
+            submatrix01=None
+            if self.submatrix01 is None
+            else np.conjugate(self.submatrix01[::-1, ::-1]),
+            submatrix10=None
+            if self.submatrix10 is None
+            else np.conjugate(self.submatrix10[::-1, ::-1]),
+            submatrix11=None
+            if self.submatrix11 is None
+            else np.conjugate(self.submatrix11[::-1, ::-1]),
+        )
 
     def __matmul__(self, other):
         """
         Convolution (or product in Floquet space) of two RG functions.
         Other must be of type SymRGfunction.
 
-        Note: This is only approximately associative, as long the function
-        converges to 0 for |n| of order of nmax.
+        .. note::
+          This is only approximately associative, as long the function
+          converges to 0 for :math:`|n|` of order of nmax.
         """
         if not isinstance(other, SymRGfunction):
             if isinstance(other, RGfunction):
@@ -173,32 +194,80 @@ class SymRGfunction(RGfunction):
         res11 = None
         res01 = None
         res10 = None
-        symmetry = self.symmetry * other.symmetry;
-        if (self.submatrix00 is not None and other.submatrix00 is not None):
-            assert (self.submatrix11 is not None and other.submatrix11 is not None)
-            res00 = rtrg_c.multiply_extended(other.submatrix00.T, self.submatrix00.T, self.padding//2, symmetry, self.clear_corners//2).T
-            res11 = rtrg_c.multiply_extended(other.submatrix11.T, self.submatrix11.T, self.padding//2, symmetry, self.clear_corners//2).T
-        elif (self.submatrix01 is not None and other.submatrix01 is not None):
-            assert (self.submatrix10 is not None and other.submatrix10 is not None)
-            res00 = rtrg_c.multiply_extended(other.submatrix10.T, self.submatrix01.T, self.padding//2, symmetry, self.clear_corners//2).T
-            res11 = rtrg_c.multiply_extended(other.submatrix01.T, self.submatrix10.T, self.padding//2, symmetry, self.clear_corners//2).T
-        elif (self.submatrix00 is not None and other.submatrix01 is not None):
-            assert (self.submatrix11 is not None and other.submatrix10 is not None)
-            res01 = rtrg_c.multiply_extended(other.submatrix01.T, self.submatrix00.T, self.padding//2, symmetry, self.clear_corners//2).T
-            res10 = rtrg_c.multiply_extended(other.submatrix10.T, self.submatrix11.T, self.padding//2, symmetry, self.clear_corners//2).T
-        elif (self.submatrix01 is not None and other.submatrix00 is not None):
-            assert (self.submatrix10 is not None and other.submatrix11 is not None)
-            res01 = rtrg_c.multiply_extended(other.submatrix11.T, self.submatrix01.T, self.padding//2, symmetry, self.clear_corners//2).T
-            res10 = rtrg_c.multiply_extended(other.submatrix00.T, self.submatrix10.T, self.padding//2, symmetry, self.clear_corners//2).T
+        symmetry = self.symmetry * other.symmetry
+        if self.submatrix00 is not None and other.submatrix00 is not None:
+            assert self.submatrix11 is not None and other.submatrix11 is not None
+            res00 = rtrg_c.multiply_extended(
+                other.submatrix00.T,
+                self.submatrix00.T,
+                self.padding // 2,
+                symmetry,
+                self.clear_corners // 2,
+            ).T
+            res11 = rtrg_c.multiply_extended(
+                other.submatrix11.T,
+                self.submatrix11.T,
+                self.padding // 2,
+                symmetry,
+                self.clear_corners // 2,
+            ).T
+        elif self.submatrix01 is not None and other.submatrix01 is not None:
+            assert self.submatrix10 is not None and other.submatrix10 is not None
+            res00 = rtrg_c.multiply_extended(
+                other.submatrix10.T,
+                self.submatrix01.T,
+                self.padding // 2,
+                symmetry,
+                self.clear_corners // 2,
+            ).T
+            res11 = rtrg_c.multiply_extended(
+                other.submatrix01.T,
+                self.submatrix10.T,
+                self.padding // 2,
+                symmetry,
+                self.clear_corners // 2,
+            ).T
+        elif self.submatrix00 is not None and other.submatrix01 is not None:
+            assert self.submatrix11 is not None and other.submatrix10 is not None
+            res01 = rtrg_c.multiply_extended(
+                other.submatrix01.T,
+                self.submatrix00.T,
+                self.padding // 2,
+                symmetry,
+                self.clear_corners // 2,
+            ).T
+            res10 = rtrg_c.multiply_extended(
+                other.submatrix10.T,
+                self.submatrix11.T,
+                self.padding // 2,
+                symmetry,
+                self.clear_corners // 2,
+            ).T
+        elif self.submatrix01 is not None and other.submatrix00 is not None:
+            assert self.submatrix10 is not None and other.submatrix11 is not None
+            res01 = rtrg_c.multiply_extended(
+                other.submatrix11.T,
+                self.submatrix01.T,
+                self.padding // 2,
+                symmetry,
+                self.clear_corners // 2,
+            ).T
+            res10 = rtrg_c.multiply_extended(
+                other.submatrix00.T,
+                self.submatrix10.T,
+                self.padding // 2,
+                symmetry,
+                self.clear_corners // 2,
+            ).T
         return SymRGfunction(
-                self.global_properties,
-                values = None,
-                submatrix00 = res00,
-                submatrix01 = res01,
-                submatrix10 = res10,
-                submatrix11 = res11,
-                symmetry = self.symmetry * other.symmetry,
-            )
+            self.global_properties,
+            values=None,
+            submatrix00=res00,
+            submatrix01=res01,
+            submatrix10=res10,
+            submatrix11=res11,
+            symmetry=self.symmetry * other.symmetry,
+        )
 
     def __rmatmul__(self, other):
         if isinstance(other, SymRGfunction):
@@ -212,27 +281,83 @@ class SymRGfunction(RGfunction):
             return NotImplemented
         assert self.global_properties is other.global_properties
         self.symmetry *= other.symmetry
-        symmetry = self.symmetry;
-        if (self.submatrix00 is not None and other.submatrix00 is not None):
-            assert (self.submatrix11 is not None and other.submatrix11 is not None)
-            self.submatrix00 = rtrg_c.multiply_extended(other.submatrix00.T, self.submatrix00.T, self.padding//2, symmetry, self.clear_corners//2, OVERWRITE_LEFT).T
-            self.submatrix11 = rtrg_c.multiply_extended(other.submatrix11.T, self.submatrix11.T, self.padding//2, symmetry, self.clear_corners//2, OVERWRITE_LEFT).T
-        elif (self.submatrix01 is not None and other.submatrix01 is not None):
-            assert (self.submatrix10 is not None and other.submatrix10 is not None)
-            self.submatrix00 = rtrg_c.multiply_extended(other.submatrix10.T, self.submatrix01.T, self.padding//2, symmetry, self.clear_corners//2, OVERWRITE_LEFT).T
-            self.submatrix11 = rtrg_c.multiply_extended(other.submatrix01.T, self.submatrix10.T, self.padding//2, symmetry, self.clear_corners//2, OVERWRITE_LEFT).T
+        symmetry = self.symmetry
+        if self.submatrix00 is not None and other.submatrix00 is not None:
+            assert self.submatrix11 is not None and other.submatrix11 is not None
+            self.submatrix00 = rtrg_c.multiply_extended(
+                other.submatrix00.T,
+                self.submatrix00.T,
+                self.padding // 2,
+                symmetry,
+                self.clear_corners // 2,
+                OVERWRITE_LEFT,
+            ).T
+            self.submatrix11 = rtrg_c.multiply_extended(
+                other.submatrix11.T,
+                self.submatrix11.T,
+                self.padding // 2,
+                symmetry,
+                self.clear_corners // 2,
+                OVERWRITE_LEFT,
+            ).T
+        elif self.submatrix01 is not None and other.submatrix01 is not None:
+            assert self.submatrix10 is not None and other.submatrix10 is not None
+            self.submatrix00 = rtrg_c.multiply_extended(
+                other.submatrix10.T,
+                self.submatrix01.T,
+                self.padding // 2,
+                symmetry,
+                self.clear_corners // 2,
+                OVERWRITE_LEFT,
+            ).T
+            self.submatrix11 = rtrg_c.multiply_extended(
+                other.submatrix01.T,
+                self.submatrix10.T,
+                self.padding // 2,
+                symmetry,
+                self.clear_corners // 2,
+                OVERWRITE_LEFT,
+            ).T
             self.submatrix01 = None
             self.submatrix10 = None
-        elif (self.submatrix00 is not None and other.submatrix01 is not None):
-            assert (self.submatrix11 is not None and other.submatrix10 is not None)
-            self.submatrix01 = rtrg_c.multiply_extended(other.submatrix01.T, self.submatrix00.T, self.padding//2, symmetry, self.clear_corners//2, OVERWRITE_LEFT).T
-            self.submatrix10 = rtrg_c.multiply_extended(other.submatrix10.T, self.submatrix11.T, self.padding//2, symmetry, self.clear_corners//2, OVERWRITE_LEFT).T
+        elif self.submatrix00 is not None and other.submatrix01 is not None:
+            assert self.submatrix11 is not None and other.submatrix10 is not None
+            self.submatrix01 = rtrg_c.multiply_extended(
+                other.submatrix01.T,
+                self.submatrix00.T,
+                self.padding // 2,
+                symmetry,
+                self.clear_corners // 2,
+                OVERWRITE_LEFT,
+            ).T
+            self.submatrix10 = rtrg_c.multiply_extended(
+                other.submatrix10.T,
+                self.submatrix11.T,
+                self.padding // 2,
+                symmetry,
+                self.clear_corners // 2,
+                OVERWRITE_LEFT,
+            ).T
             self.submatrix00 = None
             self.submatrix11 = None
-        elif (self.submatrix01 is not None and other.submatrix00 is not None):
-            assert (self.submatrix10 is not None and other.submatrix11 is not None)
-            self.submatrix01 = rtrg_c.multiply_extended(other.submatrix11.T, self.submatrix01.T, self.padding//2, symmetry, self.clear_corners//2, OVERWRITE_LEFT).T
-            self.submatrix10 = rtrg_c.multiply_extended(other.submatrix00.T, self.submatrix10.T, self.padding//2, symmetry, self.clear_corners//2, OVERWRITE_LEFT).T
+        elif self.submatrix01 is not None and other.submatrix00 is not None:
+            assert self.submatrix10 is not None and other.submatrix11 is not None
+            self.submatrix01 = rtrg_c.multiply_extended(
+                other.submatrix11.T,
+                self.submatrix01.T,
+                self.padding // 2,
+                symmetry,
+                self.clear_corners // 2,
+                OVERWRITE_LEFT,
+            ).T
+            self.submatrix10 = rtrg_c.multiply_extended(
+                other.submatrix00.T,
+                self.submatrix10.T,
+                self.padding // 2,
+                symmetry,
+                self.clear_corners // 2,
+                OVERWRITE_LEFT,
+            ).T
         return self
 
     def __add__(self, other):
@@ -246,19 +371,45 @@ class SymRGfunction(RGfunction):
         if isinstance(other, SymRGfunction):
             assert self.global_properties is other.global_properties
             symmetry = (self.symmetry == other.symmetry) * self.symmetry
-            assert (self.submatrix00 is None and other.submatrix00 is None) or (self.submatrix01 is None and other.submatrix01 is None)
+            assert (self.submatrix00 is None and other.submatrix00 is None) or (
+                self.submatrix01 is None and other.submatrix01 is None
+            )
             return SymRGfunction(
-                    self.global_properties,
-                    values = None,
-                    submatrix00 = other.submatrix00 if self.submatrix00 is None else (self.submatrix00 if other.submatrix00 is None else self.submatrix00 + other.submatrix00),
-                    submatrix01 = other.submatrix01 if self.submatrix01 is None else (self.submatrix01 if other.submatrix01 is None else self.submatrix01 + other.submatrix01),
-                    submatrix10 = other.submatrix10 if self.submatrix10 is None else (self.submatrix10 if other.submatrix10 is None else self.submatrix10 + other.submatrix10),
-                    submatrix11 = other.submatrix11 if self.submatrix11 is None else (self.submatrix11 if other.submatrix11 is None else self.submatrix11 + other.submatrix11),
-                    symmetry = symmetry,
-                )
+                self.global_properties,
+                values=None,
+                submatrix00=other.submatrix00
+                if self.submatrix00 is None
+                else (
+                    self.submatrix00
+                    if other.submatrix00 is None
+                    else self.submatrix00 + other.submatrix00
+                ),
+                submatrix01=other.submatrix01
+                if self.submatrix01 is None
+                else (
+                    self.submatrix01
+                    if other.submatrix01 is None
+                    else self.submatrix01 + other.submatrix01
+                ),
+                submatrix10=other.submatrix10
+                if self.submatrix10 is None
+                else (
+                    self.submatrix10
+                    if other.submatrix10 is None
+                    else self.submatrix10 + other.submatrix10
+                ),
+                submatrix11=other.submatrix11
+                if self.submatrix11 is None
+                else (
+                    self.submatrix11
+                    if other.submatrix11 is None
+                    else self.submatrix11 + other.submatrix11
+                ),
+                symmetry=symmetry,
+            )
         elif isinstance(other, RGfunction):
             return self.toRGfunction() + other
-        elif np.shape(other) == () or np.shape(other) == (2*self.nmax+1,):
+        elif np.shape(other) == () or np.shape(other) == (2 * self.nmax + 1,):
             assert self.submatrix01 is None and self.submatrix10 is None
             # TODO: symmetries
             # Assume that other represents a (possibly energy-dependent) scalar.
@@ -271,40 +422,68 @@ class SymRGfunction(RGfunction):
                 elif self.symmetry == -1 and other.real == 0:
                     symmetry = -1
             try:
-                res00[np.diag_indices(self.nmax+1)] += other
-                res11[np.diag_indices(self.nmax+1)] += other
+                res00[np.diag_indices(self.nmax + 1)] += other
+                res11[np.diag_indices(self.nmax + 1)] += other
             except:
-                res00[np.diag_indices(self.nmax+1)] += other[0::2]
-                res11[np.diag_indices(self.nmax+1)] += other[1::2]
+                res00[np.diag_indices(self.nmax + 1)] += other[0::2]
+                res11[np.diag_indices(self.nmax + 1)] += other[1::2]
             return SymRGfunction(
-                    self.global_properties,
-                    values = None,
-                    submatrix00 = res00,
-                    submatrix01 = None,
-                    submatrix10 = None,
-                    submatrix11 = res11,
-                    symmetry = symmetry,
-                )
+                self.global_properties,
+                values=None,
+                submatrix00=res00,
+                submatrix01=None,
+                submatrix10=None,
+                submatrix11=res11,
+                symmetry=symmetry,
+            )
         else:
-            raise TypeError("unsupported operand types for +: RGfunction and", type(other))
+            raise TypeError(
+                "unsupported operand types for +: RGfunction and", type(other)
+            )
 
     def __sub__(self, other):
         if isinstance(other, SymRGfunction):
             assert self.global_properties is other.global_properties
             symmetry = (self.symmetry == other.symmetry) * self.symmetry
-            assert (self.submatrix00 is None and other.submatrix00 is None) or (self.submatrix01 is None and other.submatrix01 is None)
+            assert (self.submatrix00 is None and other.submatrix00 is None) or (
+                self.submatrix01 is None and other.submatrix01 is None
+            )
             return SymRGfunction(
-                    self.global_properties,
-                    values = None,
-                    submatrix00 = (None if other.submatrix00 is None else -other.submatrix00) if self.submatrix00 is None else (self.submatrix00 if other.submatrix00 is None else self.submatrix00 - other.submatrix00),
-                    submatrix01 = (None if other.submatrix01 is None else -other.submatrix01) if self.submatrix01 is None else (self.submatrix01 if other.submatrix01 is None else self.submatrix01 - other.submatrix01),
-                    submatrix10 = (None if other.submatrix10 is None else -other.submatrix10) if self.submatrix10 is None else (self.submatrix10 if other.submatrix10 is None else self.submatrix10 - other.submatrix10),
-                    submatrix11 = (None if other.submatrix11 is None else -other.submatrix11) if self.submatrix11 is None else (self.submatrix11 if other.submatrix11 is None else self.submatrix11 - other.submatrix11),
-                    symmetry = symmetry,
-                )
+                self.global_properties,
+                values=None,
+                submatrix00=(None if other.submatrix00 is None else -other.submatrix00)
+                if self.submatrix00 is None
+                else (
+                    self.submatrix00
+                    if other.submatrix00 is None
+                    else self.submatrix00 - other.submatrix00
+                ),
+                submatrix01=(None if other.submatrix01 is None else -other.submatrix01)
+                if self.submatrix01 is None
+                else (
+                    self.submatrix01
+                    if other.submatrix01 is None
+                    else self.submatrix01 - other.submatrix01
+                ),
+                submatrix10=(None if other.submatrix10 is None else -other.submatrix10)
+                if self.submatrix10 is None
+                else (
+                    self.submatrix10
+                    if other.submatrix10 is None
+                    else self.submatrix10 - other.submatrix10
+                ),
+                submatrix11=(None if other.submatrix11 is None else -other.submatrix11)
+                if self.submatrix11 is None
+                else (
+                    self.submatrix11
+                    if other.submatrix11 is None
+                    else self.submatrix11 - other.submatrix11
+                ),
+                symmetry=symmetry,
+            )
         if isinstance(other, RGfunction):
             return self.toRGfunction() - other
-        elif np.shape(other) == () or np.shape(other) == (2*self.nmax+1,):
+        elif np.shape(other) == () or np.shape(other) == (2 * self.nmax + 1,):
             assert self.submatrix01 is None and self.submatrix10 is None
             # TODO: symmetries
             # Assume that other represents a (possibly energy-dependent) scalar.
@@ -317,92 +496,107 @@ class SymRGfunction(RGfunction):
                 elif self.symmetry == -1 and other.real == 0:
                     symmetry = -1
             try:
-                res00[np.diag_indices(self.nmax+1)] -= other
-                res11[np.diag_indices(self.nmax+1)] -= other
+                res00[np.diag_indices(self.nmax + 1)] -= other
+                res11[np.diag_indices(self.nmax + 1)] -= other
             except:
-                res00[np.diag_indices(self.nmax+1)] -= other[0::2]
-                res11[np.diag_indices(self.nmax+1)] -= other[1::2]
+                res00[np.diag_indices(self.nmax + 1)] -= other[0::2]
+                res11[np.diag_indices(self.nmax + 1)] -= other[1::2]
             return SymRGfunction(
-                    self.global_properties,
-                    values = None,
-                    submatrix00 = res00,
-                    submatrix01 = None,
-                    submatrix10 = None,
-                    submatrix11 = res11,
-                    symmetry = symmetry,
-                )
+                self.global_properties,
+                values=None,
+                submatrix00=res00,
+                submatrix01=None,
+                submatrix10=None,
+                submatrix11=res11,
+                symmetry=symmetry,
+            )
         else:
-            raise TypeError("unsupported operand types for +: RGfunction and", type(other))
+            raise TypeError(
+                "unsupported operand types for +: RGfunction and", type(other)
+            )
 
     def __neg__(self):
         """
         Return a copy of self with inverted sign of self.values.
         """
         return SymRGfunction(
-                self.global_properties,
-                values = None,
-                submatrix00 = None if self.submatrix00 is None else -self.submatrix00,
-                submatrix01 = None if self.submatrix01 is None else -self.submatrix01,
-                submatrix10 = None if self.submatrix10 is None else -self.submatrix10,
-                submatrix11 = None if self.submatrix11 is None else -self.submatrix11,
-                symmetry = self.symmetry,
-            )
+            self.global_properties,
+            values=None,
+            submatrix00=None if self.submatrix00 is None else -self.submatrix00,
+            submatrix01=None if self.submatrix01 is None else -self.submatrix01,
+            submatrix10=None if self.submatrix10 is None else -self.submatrix10,
+            submatrix11=None if self.submatrix11 is None else -self.submatrix11,
+            symmetry=self.symmetry,
+        )
 
     def __iadd__(self, other):
         if isinstance(other, SymRGfunction):
             assert self.global_properties is other.global_properties
             self.symmetry = (self.symmetry == other.symmetry) * self.symmetry
-            assert (self.submatrix00 is None and other.submatrix00 is None) or (self.submatrix01 is None and other.submatrix01 is None)
-            if (self.submatrix01 is None):
+            assert (self.submatrix00 is None and other.submatrix00 is None) or (
+                self.submatrix01 is None and other.submatrix01 is None
+            )
+            if self.submatrix01 is None:
                 self.submatrix00 += other.submatrix00
                 self.submatrix11 += other.submatrix11
             else:
                 self.submatrix01 += other.submatrix01
                 self.submatrix10 += other.submatrix10
-        elif np.shape(other) == () or np.shape(other) == (2*self.nmax+1,):
+        elif np.shape(other) == () or np.shape(other) == (2 * self.nmax + 1,):
             assert self.submatrix01 is None and self.submatrix10 is None
             # TODO: symmetries
             # Assume that other represents a (possibly energy-dependent) scalar.
             if self.submatrix00 is None:
-                self.submatrix00 = np.zeros((self.nmax+1, self.nmax+1), np.complex128)
+                self.submatrix00 = np.zeros(
+                    (self.nmax + 1, self.nmax + 1), np.complex128
+                )
             if self.submatrix11 is None:
                 self.submatrix11 = np.zeros((self.nmax, self.nmax), np.complex128)
             try:
-                self.submatrix00[np.diag_indices(self.nmax+1)] += other
+                self.submatrix00[np.diag_indices(self.nmax + 1)] += other
                 self.submatrix11[np.diag_indices(self.nmax)] += other
             except:
-                self.submatrix00[np.diag_indices(self.nmax+1)] += other[0::2]
+                self.submatrix00[np.diag_indices(self.nmax + 1)] += other[0::2]
                 self.submatrix11[np.diag_indices(self.nmax)] += other[1::2]
-            if not isinstance(other, Number) or not ((self.symmetry == 1 and other.imag == 0) or (self.symmetry == -1 and other.real == 0)):
+            if not isinstance(other, Number) or not (
+                (self.symmetry == 1 and other.imag == 0)
+                or (self.symmetry == -1 and other.real == 0)
+            ):
                 self.symmetry = 0
         else:
-            raise TypeError("unsupported operand types for +: RGfunction and", type(other))
+            raise TypeError(
+                "unsupported operand types for +: RGfunction and", type(other)
+            )
         return self
 
     def __isub__(self, other):
         if isinstance(other, SymRGfunction):
             assert self.global_properties is other.global_properties
             self.symmetry = (self.symmetry == other.symmetry) * self.symmetry
-            assert (self.submatrix00 is None and other.submatrix00 is None) or (self.submatrix01 is None and other.submatrix01 is None)
-            if (self.submatrix01 is None):
+            assert (self.submatrix00 is None and other.submatrix00 is None) or (
+                self.submatrix01 is None and other.submatrix01 is None
+            )
+            if self.submatrix01 is None:
                 self.submatrix00 -= other.submatrix00
                 self.submatrix11 -= other.submatrix11
             else:
                 self.submatrix01 -= other.submatrix01
                 self.submatrix10 -= other.submatrix10
-        elif np.shape(other) == () or np.shape(other) == (2*self.nmax+1,):
+        elif np.shape(other) == () or np.shape(other) == (2 * self.nmax + 1,):
             assert self.submatrix01 is None and self.submatrix10 is None
             # TODO: symmetries
             # Assume that other represents a (possibly energy-dependent) scalar.
             try:
-                self.submatrix00[np.diag_indices(self.nmax+1)] -= other
-                self.submatrix11[np.diag_indices(self.nmax+1)] -= other
+                self.submatrix00[np.diag_indices(self.nmax + 1)] -= other
+                self.submatrix11[np.diag_indices(self.nmax + 1)] -= other
             except:
-                self.submatrix00[np.diag_indices(self.nmax+1)] -= other[0::2]
-                self.submatrix11[np.diag_indices(self.nmax+1)] -= other[1::2]
+                self.submatrix00[np.diag_indices(self.nmax + 1)] -= other[0::2]
+                self.submatrix11[np.diag_indices(self.nmax + 1)] -= other[1::2]
             self.symmetry = 0
         else:
-            raise TypeError("unsupported operand types for +: RGfunction and", type(other))
+            raise TypeError(
+                "unsupported operand types for +: RGfunction and", type(other)
+            )
         return self
 
     def __mul__(self, other):
@@ -422,14 +616,22 @@ class SymRGfunction(RGfunction):
             else:
                 symmetry = 0
             return SymRGfunction(
-                    self.global_properties,
-                    values = None,
-                    submatrix00 = None if self.submatrix00 is None else other*self.submatrix00,
-                    submatrix01 = None if self.submatrix01 is None else other*self.submatrix01,
-                    submatrix10 = None if self.submatrix10 is None else other*self.submatrix10,
-                    submatrix11 = None if self.submatrix11 is None else other*self.submatrix11,
-                    symmetry = symmetry,
-                )
+                self.global_properties,
+                values=None,
+                submatrix00=None
+                if self.submatrix00 is None
+                else other * self.submatrix00,
+                submatrix01=None
+                if self.submatrix01 is None
+                else other * self.submatrix01,
+                submatrix10=None
+                if self.submatrix10 is None
+                else other * self.submatrix10,
+                submatrix11=None
+                if self.submatrix11 is None
+                else other * self.submatrix11,
+                symmetry=symmetry,
+            )
         return NotImplemented
 
     def __imul__(self, other):
@@ -447,13 +649,13 @@ class SymRGfunction(RGfunction):
                     self.symmetry = -self.symmetry
                 else:
                     self.symmetry = 0
-            if (self.submatrix00 is not None):
+            if self.submatrix00 is not None:
                 self.submatrix00 *= other
-            if (self.submatrix01 is not None):
+            if self.submatrix01 is not None:
                 self.submatrix01 *= other
-            if (self.submatrix10 is not None):
+            if self.submatrix10 is not None:
                 self.submatrix10 *= other
-            if (self.submatrix11 is not None):
+            if self.submatrix11 is not None:
                 self.submatrix11 *= other
         else:
             return NotImplemented
@@ -483,7 +685,7 @@ class SymRGfunction(RGfunction):
         Divide self by other, which must be a scalar.
         """
         if isinstance(other, Number):
-            return self * (1/other)
+            return self * (1 / other)
         return NotImplemented
 
     def __itruediv__(self, other):
@@ -491,7 +693,7 @@ class SymRGfunction(RGfunction):
         Divide self in-place by other, which must be a scalar.
         """
         if isinstance(other, Number):
-            self *= (1/other)
+            self *= 1 / other
             return self
         return NotImplemented
 
@@ -502,27 +704,47 @@ class SymRGfunction(RGfunction):
         return -self + other
 
     def __repr__(self):
-        return 'SymRGfunction{ %s,\n00: %s\n01: %s\n10: %s\n11: %s }'%(self.energy, self.submatrix00.__repr__(), self.submatrix01.__repr__(), self.submatrix10.__repr__(), self.submatrix11.__repr__())
+        return "SymRGfunction{ %s,\n00: %s\n01: %s\n10: %s\n11: %s }" % (
+            self.energy,
+            self.submatrix00.__repr__(),
+            self.submatrix01.__repr__(),
+            self.submatrix10.__repr__(),
+            self.submatrix11.__repr__(),
+        )
 
     def __getitem__(self, arg):
         raise NotImplementedError
 
     def __eq__(self, other):
-        return ( self.global_properties is other.global_properties ) \
-                and (self.submatrix00 is other.submatrix00 or np.allclose(self.submatrix00, other.submatrix00)) \
-                and (self.submatrix01 is other.submatrix01 or np.allclose(self.submatrix01, other.submatrix01)) \
-                and (self.submatrix10 is other.submatrix10 or np.allclose(self.submatrix10, other.submatrix10)) \
-                and (self.submatrix11 is other.submatrix11 or np.allclose(self.submatrix11, other.submatrix11)) \
-                and self.symmetry == other.symmetry
+        return (
+            (self.global_properties is other.global_properties)
+            and (
+                self.submatrix00 is other.submatrix00
+                or np.allclose(self.submatrix00, other.submatrix00)
+            )
+            and (
+                self.submatrix01 is other.submatrix01
+                or np.allclose(self.submatrix01, other.submatrix01)
+            )
+            and (
+                self.submatrix10 is other.submatrix10
+                or np.allclose(self.submatrix10, other.submatrix10)
+            )
+            and (
+                self.submatrix11 is other.submatrix11
+                or np.allclose(self.submatrix11, other.submatrix11)
+            )
+            and self.symmetry == other.symmetry
+        )
 
     def k2lambda(self, shift_matrix=None):
         """
         Assume that self is K_n^m(E) = K_n(E-mΩ).
         Then calculate Λ_n^m(E) such that (approximately)
 
-                     m    [                   m-k    ]
-            δ   = Σ Λ (E) [ (E-(m-n)Ω) δ   - K   (E) ] .
-             n0   k  k    [             kn    n-k    ]
+        |             m    [                   m-k    ]
+        |    δ   = Σ Λ (E) [ (E-(m-n)Ω) δ   - K   (E) ] .
+        |     n0   k  k    [             kn    n-k    ]
 
         This calculates the propagator from an effective Liouvillian.
         Some of the linear systems of equation which we need to solve here are
@@ -534,8 +756,12 @@ class SymRGfunction(RGfunction):
         assert shift_matrix is None
         assert self.submatrix01 is None and self.submatrix10 is None
         invert = -self
-        invert.submatrix00[np.diag_indices(self.nmax+1)] += self.energy + self.omega*np.arange(-self.nmax, self.nmax+1, 2)
-        invert.submatrix11[np.diag_indices(self.nmax)] += self.energy + self.omega*np.arange(-self.nmax+1, self.nmax+1, 2)
+        invert.submatrix00[
+            np.diag_indices(self.nmax + 1)
+        ] += self.energy + self.omega * np.arange(-self.nmax, self.nmax + 1, 2)
+        invert.submatrix11[
+            np.diag_indices(self.nmax)
+        ] += self.energy + self.omega * np.arange(-self.nmax + 1, self.nmax + 1, 2)
         invert.symmetry = -1 if self.symmetry == -1 else 0
         return invert.inverse()
 
@@ -553,21 +779,29 @@ class SymRGfunction(RGfunction):
         assert self.submatrix01 is None and self.submatrix10 is None
         assert self.submatrix00 is not None and self.submatrix11 is not None
         try:
-            res00 = rtrg_c.invert_extended(self.submatrix00.T, self.padding//2, round(settings.LAZY_INVERSE_FACTOR*self.padding/2)).T
-            res11 = rtrg_c.invert_extended(self.submatrix11.T, self.padding//2, round(settings.LAZY_INVERSE_FACTOR*self.padding/2)).T
+            res00 = rtrg_c.invert_extended(
+                self.submatrix00.T,
+                self.padding // 2,
+                round(settings.LAZY_INVERSE_FACTOR * self.padding / 2),
+            ).T
+            res11 = rtrg_c.invert_extended(
+                self.submatrix11.T,
+                self.padding // 2,
+                round(settings.LAZY_INVERSE_FACTOR * self.padding / 2),
+            ).T
         except:
             settings.logger.exception("padded inversion failed in compact RTRG")
             res00 = np.linalg.inv(self.submatrix00)
             res11 = np.linalg.inv(self.submatrix11)
         return SymRGfunction(
-                self.global_properties,
-                values = None,
-                submatrix00 = res00,
-                submatrix01 = None,
-                submatrix10 = None,
-                submatrix11 = res11,
-                symmetry = self.symmetry,
-            )
+            self.global_properties,
+            values=None,
+            submatrix00=res00,
+            submatrix01=None,
+            submatrix10=None,
+            submatrix11=res11,
+            symmetry=self.symmetry,
+        )
 
     def toRGfunction(self):
         return RGfunction(self.global_properties, self.values, symmetry=self.symmetry)
@@ -576,13 +810,25 @@ class SymRGfunction(RGfunction):
         raise ValueError("shift_energies is not defined for SymRGfunction")
 
     def check_symmetry(self):
-        assert self.symmetry in (-1,0,1)
+        assert self.symmetry in (-1, 0, 1)
         if self.symmetry:
             if self.submatrix11 is not None:
-                assert np.allclose(self.submatrix11[::-1,::-1].conjugate(), self.symmetry*self.submatrix11)
+                assert np.allclose(
+                    self.submatrix11[::-1, ::-1].conjugate(),
+                    self.symmetry * self.submatrix11,
+                )
             if self.submatrix00 is not None:
-                assert np.allclose(self.submatrix00[::-1,::-1].conjugate(), self.symmetry*self.submatrix00)
+                assert np.allclose(
+                    self.submatrix00[::-1, ::-1].conjugate(),
+                    self.symmetry * self.submatrix00,
+                )
             if self.submatrix01 is not None:
-                assert np.allclose(self.submatrix01[::-1,::-1].conjugate(), self.symmetry*self.submatrix01)
+                assert np.allclose(
+                    self.submatrix01[::-1, ::-1].conjugate(),
+                    self.symmetry * self.submatrix01,
+                )
             if self.submatrix10 is not None:
-                assert np.allclose(self.submatrix10[::-1,::-1].conjugate(), self.symmetry*self.submatrix10)
+                assert np.allclose(
+                    self.submatrix10[::-1, ::-1].conjugate(),
+                    self.symmetry * self.submatrix10,
+                )

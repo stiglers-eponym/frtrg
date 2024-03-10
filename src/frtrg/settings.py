@@ -23,12 +23,23 @@ You can switch between different environments:
 """
 
 import os
+
 try:
     import colorlog as logging
-    logging.basicConfig(level=logging.INFO, format='%(purple)s%(asctime)s%(reset)s %(log_color)s%(levelname)s%(reset)s %(message)s', datefmt="%H:%M:%S")
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(purple)s%(asctime)s%(reset)s %(log_color)s%(levelname)s%(reset)s %(message)s",
+        datefmt="%H:%M:%S",
+    )
 except:
     import logging
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s', datefmt="%H:%M:%S")
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        datefmt="%H:%M:%S",
+    )
 
 
 class GlobalFlags:
@@ -83,20 +94,21 @@ class GlobalFlags:
     # Default values of settings. These can be overwritten directly by setting
     # environment variables.
     defaults = dict(
-        BASEPATH = os.path.abspath("data"),
-        DB_CONNECTION_STRING = "sqlite:///" + os.path.join(os.path.abspath("data"), "frtrg.sqlite"),
-        FILENAME = "frtrg-01.h5",
-        VERSION = (14, 16, -1, -1),
-        MIN_VERSION = (14, 0),
-        LOG_TIME = 10, # in s
-        ENFORCE_SYMMETRIC = 0,
-        CHECK_SYMMETRIES = 0,
-        IGNORE_SYMMETRIES = 0,
-        EXTRAPOLATE_VOLTAGE = 0,
-        LAZY_INVERSE_FACTOR = 0.25,
-        USE_CUBLAS = 0,
-        USE_REFERENCE_IMPLEMENTATION = 0,
-        logger = logging.getLogger("log"),
+        BASEPATH=os.path.abspath("data"),
+        DB_CONNECTION_STRING="sqlite:///"
+        + os.path.join(os.path.abspath("data"), "frtrg.sqlite"),
+        FILENAME="frtrg-01.h5",
+        VERSION=(14, 16, -1, -1),
+        MIN_VERSION=(14, 0),
+        LOG_TIME=10,  # in s
+        ENFORCE_SYMMETRIC=0,
+        CHECK_SYMMETRIES=0,
+        IGNORE_SYMMETRIES=0,
+        EXTRAPOLATE_VOLTAGE=0,
+        LAZY_INVERSE_FACTOR=0.25,
+        USE_CUBLAS=0,
+        USE_REFERENCE_IMPLEMENTATION=0,
+        logger=logging.getLogger("log"),
     )
 
     def __init__(self):
@@ -104,16 +116,16 @@ class GlobalFlags:
         self.update_globals()
 
     def __setattr__(self, key, value):
-        if key in GlobalFlags.defaults and key != 'settings':
+        if key in GlobalFlags.defaults and key != "settings":
             self.settings[key] = value
         else:
             super().__setattr__(key, value)
 
     def __setitem__(self, key, value):
-        if key in GlobalFlags.defaults and key != 'settings':
+        if key in GlobalFlags.defaults and key != "settings":
             self.settings[key] = value
         else:
-            raise KeyError("invalid key: %s"%key)
+            raise KeyError("invalid key: %s" % key)
 
     def __getattr__(self, key):
         try:
@@ -136,21 +148,30 @@ class GlobalFlags:
             if key in os.environ:
                 cls.defaults[key] = type(value)(os.environ[key])
                 if verbose:
-                    cls.defaults['logger'].info('Updated from environment: %s = %s'%(key, cls.defaults[key]))
-        if cls.defaults['USE_REFERENCE_IMPLEMENTATION']:
-            cls.defaults['IGNORE_SYMMETRIES'] = 1
+                    cls.defaults["logger"].info(
+                        "Updated from environment: %s = %s" % (key, cls.defaults[key])
+                    )
+        if cls.defaults["USE_REFERENCE_IMPLEMENTATION"]:
+            cls.defaults["IGNORE_SYMMETRIES"] = 1
         if "LOG_LEVEL" in os.environ:
             cls.defaults["logger"].setLevel(os.environ["LOG_LEVEL"])
 
     @classmethod
     def get_git_version(cls):
         try:
-            process = os.popen("cd %s && git rev-list --count HEAD && git rev-parse --short HEAD"%os.path.dirname(__file__))
+            process = os.popen(
+                "cd %s && git rev-list --count HEAD && git rev-parse --short HEAD"
+                % os.path.dirname(__file__)
+            )
             git_version_strs = process.read().split("\n")
             process.close()
-            cls.defaults['VERSION'] = (*cls.defaults['VERSION'][:2], int(git_version_strs[0], base=10), int(git_version_strs[1], base=16))
+            cls.defaults["VERSION"] = (
+                *cls.defaults["VERSION"][:2],
+                int(git_version_strs[0], base=10),
+                int(git_version_strs[1], base=16),
+            )
         except:
-            cls.defaults['logger'].warning("Getting git commit id/count version failed")
+            cls.defaults["logger"].warning("Getting git commit id/count version failed")
 
     def reset(self):
         self.settings.clear()
@@ -166,20 +187,22 @@ class GlobalFlags:
         settings.update(self.settings)
         globals().update(settings)
 
+
 GlobalFlags.defaults["logger"].setLevel(logging.INFO)
 
 
 def export():
-     return dict(
-            VERSION = VERSION,
-            ENFORCE_SYMMETRIC = ENFORCE_SYMMETRIC,
-            CHECK_SYMMETRIES = CHECK_SYMMETRIES,
-            IGNORE_SYMMETRIES = IGNORE_SYMMETRIES,
-            EXTRAPOLATE_VOLTAGE = EXTRAPOLATE_VOLTAGE,
-            LAZY_INVERSE_FACTOR = LAZY_INVERSE_FACTOR,
-            USE_CUBLAS = USE_CUBLAS,
-            USE_REFERENCE_IMPLEMENTATION = USE_REFERENCE_IMPLEMENTATION,
-        )
+    return dict(
+        VERSION=VERSION,
+        ENFORCE_SYMMETRIC=ENFORCE_SYMMETRIC,
+        CHECK_SYMMETRIES=CHECK_SYMMETRIES,
+        IGNORE_SYMMETRIES=IGNORE_SYMMETRIES,
+        EXTRAPOLATE_VOLTAGE=EXTRAPOLATE_VOLTAGE,
+        LAZY_INVERSE_FACTOR=LAZY_INVERSE_FACTOR,
+        USE_CUBLAS=USE_CUBLAS,
+        USE_REFERENCE_IMPLEMENTATION=USE_REFERENCE_IMPLEMENTATION,
+    )
+
 
 GlobalFlags.read_environment()
 GlobalFlags.get_git_version()
